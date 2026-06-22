@@ -3,12 +3,12 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <unordered_map>
-#include <sstream>
 #include <thread>
-#include <functional>
 #include <mutex>
 #include <cerrno>
 #include <cstring>
+
+#include "parser.h"
 
 using namespace std;
 
@@ -51,64 +51,14 @@ string processCommand(string line)
         line.pop_back();
     }
 
-    stringstream ss(line);
-    string command;
-    ss >> command;
-
-    if (command == "PING")
+    try
     {
-        string extra;
-        if (ss >> extra)
-        {
-            return "ERR wrong number of arguments\n";
-        }
-
-        return "PONG\n";
+        return dispatch(tokenize(line), db, db_mutex);
     }
-
-    if (command == "SET")
+    catch (const invalid_argument& err)
     {
-        string key;
-        string value;
-        string extra;
-        ss >> key >> value;
-
-        if (key.empty() || value.empty() || (ss >> extra))
-        {
-            return "ERR wrong number of arguments\n";
-        }
-
-        {
-            lock_guard<mutex> lock(db_mutex);
-            db[key] = value;
-        }
-
-        return "OK\n";
+        return string("ERR ") + err.what() + "\n";
     }
-
-    if (command == "GET")
-    {
-        string key;
-        string extra;
-        ss >> key;
-
-        if (key.empty() || (ss >> extra))
-        {
-            return "ERR wrong number of arguments\n";
-        }
-
-        lock_guard<mutex> lock(db_mutex);
-        auto it = db.find(key);
-
-        if (it != db.end())
-        {
-            return it->second + "\n";
-        }
-
-        return "NOT FOUND\n";
-    }
-
-    return "ERR unknown command\n";
 }
 }
 
