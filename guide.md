@@ -149,7 +149,7 @@ with stack-allocated shared state.
 1. Add `SO_REUSEADDR` right after `socket()` call:
    ```cpp
    int opt = 1;
-   setsockopt(server_fd, SOL_SOCKET, SO_REUSEOPT, &opt, sizeof(opt));
+   setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
    ```
 
 2. Move `db` and `db_mutex` out of `main()` to file scope (or wrap in a Server struct).

@@ -7,20 +7,121 @@
 #include <thread>
 #include <functional>
 #include <mutex>
-
+#include <cerrno>
+#include <cstring>
 
 using namespace std;
 
-void handleClient(
-    int client_fd,
-    unordered_map<string, string>& db,
-    mutex& db_mutex)
+namespace
 {
+constexpr int PORT = 8080;
+constexpr size_t BUFFER_SIZE = 1024;
+constexpr size_t MAX_LINE_BUFFER_SIZE = 4096;
+
+unordered_map<string, string> db;
+mutex db_mutex;
+
+bool sendAll(int client_fd, const string& response)
+{
+    size_t total_sent = 0;
+
+    while (total_sent < response.size())
+    {
+        ssize_t sent = send(
+            client_fd,
+            response.data() + total_sent,
+            response.size() - total_sent,
+            0);
+
+        if (sent <= 0)
+        {
+            return false;
+        }
+
+        total_sent += static_cast<size_t>(sent);
+    }
+
+    return true;
+}
+
+string processCommand(string line)
+{
+    if (!line.empty() && line.back() == '\r')
+    {
+        line.pop_back();
+    }
+
+    stringstream ss(line);
+    string command;
+    ss >> command;
+
+    if (command == "PING")
+    {
+        string extra;
+        if (ss >> extra)
+        {
+            return "ERR wrong number of arguments\n";
+        }
+
+        return "PONG\n";
+    }
+
+    if (command == "SET")
+    {
+        string key;
+        string value;
+        string extra;
+        ss >> key >> value;
+
+        if (key.empty() || value.empty() || (ss >> extra))
+        {
+            return "ERR wrong number of arguments\n";
+        }
+
+        {
+            lock_guard<mutex> lock(db_mutex);
+            db[key] = value;
+        }
+
+        return "OK\n";
+    }
+
+    if (command == "GET")
+    {
+        string key;
+        string extra;
+        ss >> key;
+
+        if (key.empty() || (ss >> extra))
+        {
+            return "ERR wrong number of arguments\n";
+        }
+
+        lock_guard<mutex> lock(db_mutex);
+        auto it = db.find(key);
+
+        if (it != db.end())
+        {
+            return it->second + "\n";
+        }
+
+        return "NOT FOUND\n";
+    }
+
+    return "ERR unknown command\n";
+}
+}
+
+void handleClient(
+    int client_fd)
+{
+    string line_buffer;
+
     while (true)
     {
-        char buffer[1024];
+        char buffer[BUFFER_SIZE];
 
-        int bytes = recv(
+        ssize_t bytes = recv(
             client_fd,
             buffer,
             sizeof(buffer) - 1,
@@ -33,57 +134,31 @@ void handleClient(
         }
 
         buffer[bytes] = '\0';
+        line_buffer.append(buffer, static_cast<size_t>(bytes));
 
-        string msg(buffer);
-
-        cout << "Received: " << msg << endl;
-
-        stringstream ss(msg);
-
-        string command, key, value;
-
-        ss >> command >> key >> value;
-
-        if (command == "SET")
-{
-    {
-        lock_guard<mutex> lock(db_mutex);
-        db[key] = value;
-    }
-
-    string response = "OK";
-
-    send(
-        client_fd,
-        response.c_str(),
-        response.size(),
-        0);
-}
-        else if (command == "GET")
-{
-    string response;
-
-    {
-        lock_guard<mutex> lock(db_mutex);
-
-        auto it = db.find(key);
-
-        if (it != db.end())
+        if (line_buffer.size() > MAX_LINE_BUFFER_SIZE)
         {
-            response = it->second;
+            sendAll(client_fd, "ERR request too large\n");
+            break;
         }
-        else
-        {
-            response = "NOT FOUND";
-        }
-    }
 
-    send(
-        client_fd,
-        response.c_str(),
-        response.size(),
-        0);
-}
+        size_t newline_pos = string::npos;
+
+        while ((newline_pos = line_buffer.find('\n')) != string::npos)
+        {
+            string line = line_buffer.substr(0, newline_pos);
+            line_buffer.erase(0, newline_pos + 1);
+
+            cout << "Received: " << line << endl;
+
+            string response = processCommand(line);
+
+            if (!sendAll(client_fd, response))
+            {
+                close(client_fd);
+                return;
+            }
+        }
     }
 
     close(client_fd);
@@ -101,9 +176,22 @@ int main()
         return 1;
     }
 
+    int opt = 1;
+    if (setsockopt(
+            server_fd,
+            SOL_SOCKET,
+            SO_REUSEADDR,
+            &opt,
+            sizeof(opt)) < 0)
+    {
+        cout << "setsockopt(SO_REUSEADDR) failed: " << strerror(errno) << "\n";
+        close(server_fd);
+        return 1;
+    }
+
     sockaddr_in server_addr;          // A structure that stores the socket's address information (IP, port,Network type)?
     server_addr.sin_family = AF_INET; // IPv4
-    server_addr.sin_port = htons(8080);
+    server_addr.sin_port = htons(PORT);
     server_addr.sin_addr.s_addr = INADDR_ANY; // Accept connections on this machine
 
     // Take this phone (server_fd) and assign it Port 8080
@@ -112,6 +200,7 @@ int main()
              sizeof(server_addr)) < 0)
     {
         cout << "Bind Failed\n";
+        close(server_fd);
         return 1;
     }
     cout << "Bind Successful\n";
@@ -120,40 +209,35 @@ int main()
     if (listen(server_fd, 5) < 0) // Maximum 5 connection requests can wait in queue.
     {
         cout << "Listen Failed\n";
+        close(server_fd);
         return 1;
     }
     cout << "Listening...\n";
-
-    // Another socket for particular client connection and is filled with client information after connection. This is the socket that will be used to communicate with the client.
-    sockaddr_in client_addr;
-    socklen_t client_size = sizeof(client_addr);
-    
-    mutex db_mutex;
-
-    unordered_map<string,string> db;
     while (true)
-{
-    int client_fd = accept(
-        server_fd,
-        (sockaddr *)&client_addr,
-        &client_size);
-
-    if (client_fd < 0)
     {
-        cout << "Accept Failed\n";
-        continue;
+        // Another socket for particular client connection and is filled with client information after connection. This is the socket that will be used to communicate with the client.
+        sockaddr_in client_addr;
+        socklen_t client_size = sizeof(client_addr);
+
+        int client_fd = accept(
+            server_fd,
+            (sockaddr *)&client_addr,
+            &client_size);
+
+        if (client_fd < 0)
+        {
+            cout << "Accept Failed\n";
+            continue;
+        }
+
+        cout << "Client Connected!\n";
+
+        thread t(
+            handleClient,
+            client_fd);
+
+        t.detach();
     }
-
-    cout << "Client Connected!\n";
-
-    thread t(
-    handleClient,
-    client_fd,
-    ref(db),
-    ref(db_mutex));
-    
-    t.detach();
-}
 
 
 

@@ -44,6 +44,7 @@ int main()
     string msg;
 
     getline(cin, msg);
+    msg.push_back('\n');
 
     send(
         client_fd,
