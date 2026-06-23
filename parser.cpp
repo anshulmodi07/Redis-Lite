@@ -2,6 +2,7 @@
 
 #include "cmd_hash.h"
 #include "cmd_list.h"
+#include "cmd_set.h"
 #include "cmd_string.h"
 #include "object.h"
 #include "resp.h"
@@ -220,6 +221,15 @@ string dispatch(const vector<string>& argv, Db& db)
         || normalized[0] == "LREM" || normalized[0] == "LTRIM")
     {
         return dispatchListCommand(normalized, db);
+    }
+
+    if (normalized[0] == "SADD" || normalized[0] == "SREM" || normalized[0] == "SMEMBERS"
+        || normalized[0] == "SCARD" || normalized[0] == "SISMEMBER" || normalized[0] == "SMISMEMBER"
+        || normalized[0] == "SPOP" || normalized[0] == "SRANDMEMBER" || normalized[0] == "SINTER"
+        || normalized[0] == "SUNION" || normalized[0] == "SDIFF" || normalized[0] == "SINTERSTORE"
+        || normalized[0] == "SUNIONSTORE" || normalized[0] == "SDIFFSTORE")
+    {
+        return dispatchSetCommand(normalized, db);
     }
 
     if (normalized[0] == "TYPE")

@@ -1,16 +1,16 @@
 # Project Structure
 
-Current version: V3.3
+Current version: V3.4
 
 ```text
-|-- cmd_list.cpp        # List command handlers (LPUSH, LRANGE, LPOP, ...)
-|-- cmd_list.h
-|-- cmd_hash.cpp / cmd_string.cpp / object.cpp
-|-- parser.cpp          # Routes list commands to cmd_list
-`-- tests/test_v3_3.py
+|-- cmd_set.cpp         # Set command handlers (SADD, SINTER, SPOP, ...)
+|-- cmd_set.h
+|-- cmd_list.cpp / cmd_hash.cpp / cmd_string.cpp / object.cpp
+|-- parser.cpp
+`-- tests/test_v3_4.py
 ```
 
 ## File Responsibilities
 
-- `cmd_list.h` / `cmd_list.cpp` — list commands on `std::list<string>` inside `OBJ_LIST`; `lookupList()`, index normalization, `dispatchListCommand()`.
-- `object.cpp` — `createListObject()` allocates the backing list.
+- `cmd_set.h` / `cmd_set.cpp` — set commands on `unordered_set<string>` inside `OBJ_SET`; set algebra and `dispatchSetCommand()`.
+- `object.cpp` — `createSetObject()` allocates the backing set.

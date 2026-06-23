@@ -13,6 +13,7 @@ OBJECT_SRC = ROOT / "object.cpp"
 CMD_STRING_SRC = ROOT / "cmd_string.cpp"
 CMD_HASH_SRC = ROOT / "cmd_hash.cpp"
 CMD_LIST_SRC = ROOT / "cmd_list.cpp"
+CMD_SET_SRC = ROOT / "cmd_set.cpp"
 EVENTLOOP_SRC = ROOT / "eventloop.cpp"
 SERVER_BIN = ROOT / "tests" / "server_v3_0_bin"
 HOST = "127.0.0.1"
@@ -37,6 +38,7 @@ def compile_server():
             str(CMD_STRING_SRC),
             str(CMD_HASH_SRC),
             str(CMD_LIST_SRC),
+            str(CMD_SET_SRC),
             str(EVENTLOOP_SRC),
         ],
         cwd=ROOT,

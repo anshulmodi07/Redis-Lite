@@ -17,7 +17,7 @@ SOURCES = [
     ROOT / "cmd_set.cpp",
     ROOT / "eventloop.cpp",
 ]
-SERVER_BIN = ROOT / "tests" / "server_v3_2_bin"
+SERVER_BIN = ROOT / "tests" / "server_v3_4_bin"
 HOST = "127.0.0.1"
 PORT = 8080
 
@@ -76,76 +76,86 @@ def read_line(reader):
     return line
 
 
-def read_bulk(reader, length):
-    data = reader.read(length + 2)
-    assert data.endswith(b"\r\n"), data
-    return data[:-2]
+def read_bulk_array(reader, count):
+    items = []
+    for _ in range(count):
+        line = read_line(reader)
+        assert line.startswith(b"$"), line
+        length = int(line[1:-2])
+        data = reader.read(length + 2)
+        assert data.endswith(b"\r\n")
+        items.append(data[:-2].decode("utf-8"))
+    return items
 
 
-def test_hset_hgetall_and_hincrby():
+def test_set_algebra_from_guide():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         sock.settimeout(1)
         reader = sock.makefile("rb")
 
-        sock.sendall(command("HSET", "user:1", "name", "Alice", "age", "30", "city", "Delhi"))
-        assert read_line(reader) == b":3\r\n"
+        sock.sendall(command("SADD", "s1", "a", "b", "c", "d"))
+        assert read_line(reader) == b":4\r\n"
 
-        sock.sendall(command("HGET", "user:1", "name"))
-        assert reader.read(11) == b"$5\r\nAlice\r\n"
+        sock.sendall(command("SADD", "s2", "c", "d", "e", "f"))
+        assert read_line(reader) == b":4\r\n"
 
-        sock.sendall(command("HINCRBY", "user:1", "age", "1"))
-        assert read_line(reader) == b":31\r\n"
+        sock.sendall(command("SCARD", "s1"))
+        assert read_line(reader) == b":4\r\n"
 
-        sock.sendall(command("HGET", "user:1", "age"))
-        assert reader.read(8) == b"$2\r\n31\r\n"
-
-        sock.sendall(command("HLEN", "user:1"))
-        assert read_line(reader) == b":3\r\n"
-
-
-def test_hmget_hdel_hexists():
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        sock.settimeout(1)
-        reader = sock.makefile("rb")
-
-        sock.sendall(command("HMGET", "user:1", "name", "missing"))
+        sock.sendall(command("SINTER", "s1", "s2"))
         assert read_line(reader) == b"*2\r\n"
-        assert reader.read(11) == b"$5\r\nAlice\r\n"
-        assert read_line(reader) == b"$-1\r\n"
+        assert sorted(read_bulk_array(reader, 2)) == ["c", "d"]
 
-        sock.sendall(command("HEXISTS", "user:1", "city"))
+        sock.sendall(command("SUNION", "s1", "s2"))
+        assert read_line(reader) == b"*6\r\n"
+        assert sorted(read_bulk_array(reader, 6)) == ["a", "b", "c", "d", "e", "f"]
+
+        sock.sendall(command("SDIFF", "s1", "s2"))
+        assert read_line(reader) == b"*2\r\n"
+        assert sorted(read_bulk_array(reader, 2)) == ["a", "b"]
+
+
+def test_sismember_and_srem():
+    with socket.create_connection((HOST, PORT), timeout=2) as sock:
+        sock.settimeout(1)
+        reader = sock.makefile("rb")
+
+        sock.sendall(command("SISMEMBER", "s1", "a"))
         assert read_line(reader) == b":1\r\n"
 
-        sock.sendall(command("HDEL", "user:1", "city"))
+        sock.sendall(command("SMISMEMBER", "s1", "a", "z"))
+        assert read_line(reader) == b"*2\r\n"
         assert read_line(reader) == b":1\r\n"
-
-        sock.sendall(command("HEXISTS", "user:1", "city"))
         assert read_line(reader) == b":0\r\n"
 
+        sock.sendall(command("SREM", "s1", "a", "missing"))
+        assert read_line(reader) == b":1\r\n"
 
-def test_wrongtype_after_string_overwrite():
+
+def test_store_commands():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         sock.settimeout(1)
         reader = sock.makefile("rb")
 
-        sock.sendall(command("SET", "user:1", "oops"))
-        assert read_line(reader) == b"+OK\r\n"
+        sock.sendall(command("SINTERSTORE", "out", "s1", "s2"))
+        assert read_line(reader) == b":2\r\n"
 
-        sock.sendall(command("HGET", "user:1", "name"))
-        assert read_line(reader).startswith(b"-WRONGTYPE")
+        sock.sendall(command("SMEMBERS", "out"))
+        assert read_line(reader) == b"*2\r\n"
+        assert sorted(read_bulk_array(reader, 2)) == ["c", "d"]
 
 
 def run_tests():
     compile_server()
     proc = start_server()
     try:
-        test_hset_hgetall_and_hincrby()
-        test_hmget_hdel_hexists()
-        test_wrongtype_after_string_overwrite()
+        test_set_algebra_from_guide()
+        test_sismember_and_srem()
+        test_store_commands()
     finally:
         stop_server(proc)
 
 
 if __name__ == "__main__":
     run_tests()
-    print("v3.2 hash command tests passed")
+    print("v3.4 set command tests passed")
