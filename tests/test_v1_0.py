@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER_SRC = ROOT / "server.cpp"
 PARSER_SRC = ROOT / "parser.cpp"
 RESP_SRC = ROOT / "resp.cpp"
-SERVER_BIN = ROOT / "tests" / "server_v0_1_bin"
+SERVER_BIN = ROOT / "tests" / "server_v1_0_bin"
 HOST = "127.0.0.1"
 PORT = 8080
 
@@ -72,38 +72,45 @@ def read_line(reader):
     return reader.readline()
 
 
-def send_command(command):
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        reader = sock.makefile("rb")
-        sock.sendall(command)
-        return read_line(reader)
+def command(*parts):
+    frame = f"*{len(parts)}\r\n".encode("utf-8")
+    for part in parts:
+        data = part.encode("utf-8")
+        frame += f"${len(data)}\r\n".encode("utf-8") + data + b"\r\n"
+    return frame
 
 
-def test_basic_commands_and_partial_recv():
+def test_resp_commands_and_pipelining():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         reader = sock.makefile("rb")
-        sock.sendall(b"PI")
-        time.sleep(0.05)
-        sock.sendall(b"NG\n")
+
+        sock.sendall(command("ping"))
         assert read_line(reader) == b"+PONG\r\n"
 
-        sock.sendall(b"SET foo bar\nGET foo\nGET missing\nBADCMD\n")
+        sock.sendall(command("SET", "space", "hello world") + command("GET", "space"))
         assert read_line(reader) == b"+OK\r\n"
-        assert reader.read(9) == b"$3\r\nbar\r\n"
-        assert read_line(reader) == b"$-1\r\n"
-        assert read_line(reader) == b"-ERR unknown command\r\n"
+        assert reader.read(18) == b"$11\r\nhello world\r\n"
 
 
-def test_crlf_and_bad_arity():
-    assert send_command(b"PING\r\n") == b"+PONG\r\n"
-    assert send_command(b"GET too many args\n") == b"-ERR wrong number of arguments for 'GET' command\r\n"
-
-
-def test_oversized_unterminated_input_disconnects():
+def test_partial_bulk_string():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         reader = sock.makefile("rb")
-        sock.sendall(b"x" * 5000)
-        assert read_line(reader) == b"-ERR request too large\r\n"
+
+        payload = command("SET", "split", "abcde")
+        sock.sendall(payload[:15])
+        time.sleep(0.05)
+        sock.sendall(payload[15:])
+        assert read_line(reader) == b"+OK\r\n"
+
+        sock.sendall(command("GET", "split"))
+        assert reader.read(11) == b"$5\r\nabcde\r\n"
+
+
+def test_malformed_resp_errors():
+    with socket.create_connection((HOST, PORT), timeout=2) as sock:
+        reader = sock.makefile("rb")
+        sock.sendall(b"*1\r\n+PING\r\n")
+        assert read_line(reader) == b"-ERR protocol error: expected bulk string\r\n"
 
 
 def run_tests():
@@ -111,16 +118,13 @@ def run_tests():
 
     proc = start_server()
     try:
-        test_basic_commands_and_partial_recv()
-        test_crlf_and_bad_arity()
-        test_oversized_unterminated_input_disconnects()
+        test_resp_commands_and_pipelining()
+        test_partial_bulk_string()
+        test_malformed_resp_errors()
     finally:
         stop_server(proc)
-
-    restarted = start_server()
-    stop_server(restarted)
 
 
 if __name__ == "__main__":
     run_tests()
-    print("v0.1 socket tests passed")
+    print("v1.0 resp decoder tests passed")

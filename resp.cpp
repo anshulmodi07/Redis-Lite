@@ -1,0 +1,259 @@
+#include "resp.h"
+
+#include "parser.h"
+
+#include <cctype>
+#include <stdexcept>
+
+using namespace std;
+
+namespace
+{
+bool readLineAt(const string& buffer, size_t pos, string& line, size_t& next)
+{
+    size_t end = buffer.find("\r\n", pos);
+    size_t delimiter_size = 2;
+
+    if (end == string::npos)
+    {
+        end = buffer.find('\n', pos);
+        delimiter_size = 1;
+    }
+
+    if (end == string::npos)
+    {
+        return false;
+    }
+
+    line = buffer.substr(pos, end - pos);
+    if (!line.empty() && line.back() == '\r')
+    {
+        line.pop_back();
+    }
+
+    next = end + delimiter_size;
+    return true;
+}
+
+long long parseInteger(const string& value, const string& context)
+{
+    if (value.empty())
+    {
+        throw invalid_argument("protocol error: empty " + context);
+    }
+
+    size_t pos = 0;
+    bool negative = false;
+
+    if (value[pos] == '-')
+    {
+        negative = true;
+        ++pos;
+    }
+
+    if (pos == value.size())
+    {
+        throw invalid_argument("protocol error: invalid " + context);
+    }
+
+    long long result = 0;
+    for (; pos < value.size(); ++pos)
+    {
+        unsigned char ch = static_cast<unsigned char>(value[pos]);
+        if (!isdigit(ch))
+        {
+            throw invalid_argument("protocol error: invalid " + context);
+        }
+
+        result = (result * 10) + (value[pos] - '0');
+    }
+
+    return negative ? -result : result;
+}
+
+bool parseBulkStringAt(
+    const string& buffer,
+    size_t pos,
+    string& out,
+    size_t& next)
+{
+    string header;
+    if (!readLineAt(buffer, pos, header, next))
+    {
+        return false;
+    }
+
+    if (header.empty() || header[0] != '$')
+    {
+        throw invalid_argument("protocol error: expected bulk string");
+    }
+
+    long long len = parseInteger(header.substr(1), "bulk length");
+    if (len < 0)
+    {
+        throw invalid_argument("protocol error: null bulk string is not a command argument");
+    }
+
+    size_t bulk_len = static_cast<size_t>(len);
+    if (buffer.size() < next + bulk_len + 2)
+    {
+        return false;
+    }
+
+    out = buffer.substr(next, bulk_len);
+    next += bulk_len;
+
+    if (buffer[next] != '\r' || buffer[next + 1] != '\n')
+    {
+        throw invalid_argument("protocol error: bulk string missing CRLF terminator");
+    }
+
+    next += 2;
+    return true;
+}
+
+bool parseArrayAt(
+    const string& buffer,
+    vector<string>& out,
+    size_t& next)
+{
+    string header;
+    if (!readLineAt(buffer, 0, header, next))
+    {
+        return false;
+    }
+
+    if (header.empty() || header[0] != '*')
+    {
+        throw invalid_argument("protocol error: expected array");
+    }
+
+    long long count = parseInteger(header.substr(1), "array length");
+    if (count < 0)
+    {
+        throw invalid_argument("protocol error: null array is not a command");
+    }
+
+    vector<string> argv;
+    argv.reserve(static_cast<size_t>(count));
+
+    for (long long i = 0; i < count; ++i)
+    {
+        string arg;
+        size_t after_bulk = next;
+
+        if (!parseBulkStringAt(buffer, next, arg, after_bulk))
+        {
+            return false;
+        }
+
+        argv.push_back(arg);
+        next = after_bulk;
+    }
+
+    out = argv;
+    return true;
+}
+
+bool parseInlineAt(
+    const string& buffer,
+    vector<string>& out,
+    size_t& next)
+{
+    string line;
+    if (!readLineAt(buffer, 0, line, next))
+    {
+        return false;
+    }
+
+    out = tokenize(line);
+    return true;
+}
+}
+
+void RespParser::feed(const char* data, size_t len)
+{
+    buffer_.append(data, len);
+}
+
+bool RespParser::tryParse(vector<string>& out)
+{
+    if (buffer_.empty())
+    {
+        return false;
+    }
+
+    vector<string> parsed;
+    size_t next = 0;
+    bool complete = false;
+
+    if (buffer_[0] == '*')
+    {
+        complete = parseArrayAt(buffer_, parsed, next);
+    }
+    else
+    {
+        complete = parseInlineAt(buffer_, parsed, next);
+    }
+
+    if (!complete)
+    {
+        return false;
+    }
+
+    buffer_.erase(0, next);
+    out = parsed;
+    return true;
+}
+
+size_t RespParser::bufferedSize() const
+{
+    return buffer_.size();
+}
+
+string encodeSimpleString(const string& value)
+{
+    return "+" + value + "\r\n";
+}
+
+string encodeOK()
+{
+    return encodeSimpleString("OK");
+}
+
+string encodeError(const string& msg)
+{
+    return "-" + msg + "\r\n";
+}
+
+string encodeInteger(long long value)
+{
+    return ":" + to_string(value) + "\r\n";
+}
+
+string encodeBulkString(const string& value)
+{
+    return "$" + to_string(value.size()) + "\r\n" + value + "\r\n";
+}
+
+string encodeNullBulk()
+{
+    return "$-1\r\n";
+}
+
+string encodeArray(const vector<string>& items)
+{
+    string response = "*" + to_string(items.size()) + "\r\n";
+
+    for (const string& item : items)
+    {
+        response += encodeBulkString(item);
+    }
+
+    return response;
+}
+
+string encodeNullArray()
+{
+    return "*-1\r\n";
+}

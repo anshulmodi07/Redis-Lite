@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER_SRC = ROOT / "server.cpp"
 PARSER_SRC = ROOT / "parser.cpp"
 RESP_SRC = ROOT / "resp.cpp"
-SERVER_BIN = ROOT / "tests" / "server_v0_1_bin"
+SERVER_BIN = ROOT / "tests" / "server_v0_2_bin"
 HOST = "127.0.0.1"
 PORT = 8080
 
@@ -72,38 +72,23 @@ def read_line(reader):
     return reader.readline()
 
 
-def send_command(command):
+def test_tokenizer_and_dispatch():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         reader = sock.makefile("rb")
-        sock.sendall(command)
-        return read_line(reader)
 
-
-def test_basic_commands_and_partial_recv():
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        reader = sock.makefile("rb")
-        sock.sendall(b"PI")
-        time.sleep(0.05)
-        sock.sendall(b"NG\n")
-        assert read_line(reader) == b"+PONG\r\n"
-
-        sock.sendall(b"SET foo bar\nGET foo\nGET missing\nBADCMD\n")
+        sock.sendall(b'set mykey "hello world"\nGET mykey\n')
         assert read_line(reader) == b"+OK\r\n"
-        assert reader.read(9) == b"$3\r\nbar\r\n"
-        assert read_line(reader) == b"$-1\r\n"
-        assert read_line(reader) == b"-ERR unknown command\r\n"
+        assert reader.read(18) == b"$11\r\nhello world\r\n"
 
+        sock.sendall(b'SET quote "hello \\"redis\\""\nGET quote\n')
+        assert read_line(reader) == b"+OK\r\n"
+        assert reader.read(20) == b'$13\r\nhello "redis"\r\n'
 
-def test_crlf_and_bad_arity():
-    assert send_command(b"PING\r\n") == b"+PONG\r\n"
-    assert send_command(b"GET too many args\n") == b"-ERR wrong number of arguments for 'GET' command\r\n"
+        sock.sendall(b"GET mykey extra\n")
+        assert read_line(reader) == b"-ERR wrong number of arguments for 'GET' command\r\n"
 
-
-def test_oversized_unterminated_input_disconnects():
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        reader = sock.makefile("rb")
-        sock.sendall(b"x" * 5000)
-        assert read_line(reader) == b"-ERR request too large\r\n"
+        sock.sendall(b'SET broken "unterminated\n')
+        assert read_line(reader) == b"-ERR unterminated quoted string\r\n"
 
 
 def run_tests():
@@ -111,16 +96,11 @@ def run_tests():
 
     proc = start_server()
     try:
-        test_basic_commands_and_partial_recv()
-        test_crlf_and_bad_arity()
-        test_oversized_unterminated_input_disconnects()
+        test_tokenizer_and_dispatch()
     finally:
         stop_server(proc)
-
-    restarted = start_server()
-    stop_server(restarted)
 
 
 if __name__ == "__main__":
     run_tests()
-    print("v0.1 socket tests passed")
+    print("v0.2 tokenizer tests passed")
