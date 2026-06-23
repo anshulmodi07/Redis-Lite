@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include "cmd_hash.h"
 #include "cmd_string.h"
 #include "object.h"
 #include "resp.h"
@@ -202,6 +203,14 @@ string dispatch(const vector<string>& argv, Db& db)
         || normalized[0] == "STRLEN")
     {
         return dispatchStringCommand(normalized, db);
+    }
+
+    if (normalized[0] == "HSET" || normalized[0] == "HMSET" || normalized[0] == "HGET"
+        || normalized[0] == "HMGET" || normalized[0] == "HDEL" || normalized[0] == "HEXISTS"
+        || normalized[0] == "HLEN" || normalized[0] == "HKEYS" || normalized[0] == "HVALS"
+        || normalized[0] == "HGETALL" || normalized[0] == "HINCRBY")
+    {
+        return dispatchHashCommand(normalized, db);
     }
 
     if (normalized[0] == "TYPE")

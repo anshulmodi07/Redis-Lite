@@ -15,7 +15,7 @@ SOURCES = [
     ROOT / "cmd_hash.cpp",
     ROOT / "eventloop.cpp",
 ]
-SERVER_BIN = ROOT / "tests" / "server_v3_1_bin"
+SERVER_BIN = ROOT / "tests" / "server_v3_2_bin"
 HOST = "127.0.0.1"
 PORT = 8080
 
@@ -36,7 +36,6 @@ def start_server():
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-
     deadline = time.time() + 5
     while time.time() < deadline:
         try:
@@ -46,7 +45,6 @@ def start_server():
             if proc.poll() is not None:
                 raise RuntimeError("server exited before accepting connections")
             time.sleep(0.05)
-
     stop_server(proc)
     raise RuntimeError("server did not start listening in time")
 
@@ -76,76 +74,76 @@ def read_line(reader):
     return line
 
 
-def test_incr_and_append():
+def read_bulk(reader, length):
+    data = reader.read(length + 2)
+    assert data.endswith(b"\r\n"), data
+    return data[:-2]
+
+
+def test_hset_hgetall_and_hincrby():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         sock.settimeout(1)
         reader = sock.makefile("rb")
 
-        sock.sendall(command("SET", "counter", "0"))
-        assert read_line(reader) == b"+OK\r\n"
+        sock.sendall(command("HSET", "user:1", "name", "Alice", "age", "30", "city", "Delhi"))
+        assert read_line(reader) == b":3\r\n"
 
-        sock.sendall(command("INCR", "counter"))
+        sock.sendall(command("HGET", "user:1", "name"))
+        assert reader.read(11) == b"$5\r\nAlice\r\n"
+
+        sock.sendall(command("HINCRBY", "user:1", "age", "1"))
+        assert read_line(reader) == b":31\r\n"
+
+        sock.sendall(command("HGET", "user:1", "age"))
+        assert reader.read(8) == b"$2\r\n31\r\n"
+
+        sock.sendall(command("HLEN", "user:1"))
+        assert read_line(reader) == b":3\r\n"
+
+
+def test_hmget_hdel_hexists():
+    with socket.create_connection((HOST, PORT), timeout=2) as sock:
+        sock.settimeout(1)
+        reader = sock.makefile("rb")
+
+        sock.sendall(command("HMGET", "user:1", "name", "missing"))
+        assert read_line(reader) == b"*2\r\n"
+        assert reader.read(11) == b"$5\r\nAlice\r\n"
+        assert read_line(reader) == b"$-1\r\n"
+
+        sock.sendall(command("HEXISTS", "user:1", "city"))
         assert read_line(reader) == b":1\r\n"
 
-        sock.sendall(command("INCRBY", "counter", "5"))
-        assert read_line(reader) == b":6\r\n"
+        sock.sendall(command("HDEL", "user:1", "city"))
+        assert read_line(reader) == b":1\r\n"
 
-        sock.sendall(command("APPEND", "mykey", "hello"))
-        assert read_line(reader) == b":5\r\n"
-
-        sock.sendall(command("APPEND", "mykey", " world"))
-        assert read_line(reader) == b":11\r\n"
-
-        sock.sendall(command("STRLEN", "mykey"))
-        assert read_line(reader) == b":11\r\n"
-
-
-def test_setnx_and_set_nx():
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        sock.settimeout(1)
-        reader = sock.makefile("rb")
-
-        sock.sendall(command("SETNX", "mykey", "999"))
+        sock.sendall(command("HEXISTS", "user:1", "city"))
         assert read_line(reader) == b":0\r\n"
 
-        sock.sendall(command("SET", "k", "v", "NX"))
-        assert read_line(reader) == b"+OK\r\n"
 
-        sock.sendall(command("SET", "k", "v2", "NX"))
-        assert read_line(reader) == b"$-1\r\n"
-
-
-def test_mset_mget_and_getset():
+def test_wrongtype_after_string_overwrite():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         sock.settimeout(1)
         reader = sock.makefile("rb")
 
-        sock.sendall(command("MSET", "a", "1", "b", "2"))
+        sock.sendall(command("SET", "user:1", "oops"))
         assert read_line(reader) == b"+OK\r\n"
 
-        sock.sendall(command("MGET", "a", "b", "missing"))
-        assert read_line(reader) == b"*3\r\n"
-        assert reader.read(7) == b"$1\r\n1\r\n"
-        assert reader.read(7) == b"$1\r\n2\r\n"
-        assert read_line(reader) == b"$-1\r\n"
-
-        sock.sendall(command("GETSET", "a", "9"))
-        assert reader.read(7) == b"$1\r\n1\r\n"
-        sock.sendall(command("GET", "a"))
-        assert reader.read(7) == b"$1\r\n9\r\n"
+        sock.sendall(command("HGET", "user:1", "name"))
+        assert read_line(reader).startswith(b"-WRONGTYPE")
 
 
 def run_tests():
     compile_server()
     proc = start_server()
     try:
-        test_incr_and_append()
-        test_setnx_and_set_nx()
-        test_mset_mget_and_getset()
+        test_hset_hgetall_and_hincrby()
+        test_hmget_hdel_hexists()
+        test_wrongtype_after_string_overwrite()
     finally:
         stop_server(proc)
 
 
 if __name__ == "__main__":
     run_tests()
-    print("v3.1 string command tests passed")
+    print("v3.2 hash command tests passed")

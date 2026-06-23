@@ -2175,7 +2175,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V2.1  epoll-based loop, EPOLLOUT only when needed
 [x] V3.0  RedisObject type wrapper (type + encoding + void* ptr)
 [x] V3.1  Full string commands (INCR, APPEND, MSET/MGET, EX/NX options)
-[ ] V3.2  Hash commands (HSET, HGET, HGETALL, HINCRBY, WRONGTYPE check)
+[x] V3.2  Hash commands (HSET, HGET, HGETALL, HINCRBY, WRONGTYPE check)
 [ ] V3.3  List commands (LPUSH/RPUSH, LPOP/RPOP, LRANGE, LINDEX)
 [ ] V3.4  Set commands (SADD/SREM, SMEMBERS, SINTER/SUNION/SDIFF)
 [ ] V3.5  Sorted Set commands (ZADD, ZRANGE, ZRANK, skip list implementation)
