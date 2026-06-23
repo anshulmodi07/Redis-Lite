@@ -2183,7 +2183,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V3.3  List commands (LPUSH/RPUSH, LPOP/RPOP, LRANGE, LINDEX)
 [x] V3.4  Set commands (SADD/SREM, SMEMBERS, SINTER/SUNION/SDIFF)
 [ ] V3.5  Sorted Set commands (ZADD, ZRANGE, ZRANK, skip list implementation)
-[ ] V4.0  Expiry metadata map
+[x] V4.0  Expiry metadata map
 [ ] V4.1  Lazy expiry on every read
 [ ] V4.2  Active expiry sweep (periodic, sampling-based)
 [ ] V4.3  EXPIRE/TTL/PERSIST command family

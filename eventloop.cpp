@@ -1,6 +1,7 @@
 #include "eventloop.h"
 
 #include "client.h"
+#include "db.h"
 #include "object.h"
 #include "parser.h"
 #include "resp.h"
@@ -26,7 +27,7 @@ constexpr size_t BUFFER_SIZE = 1024;
 constexpr size_t MAX_REQUEST_BUFFER_SIZE = 4096;
 constexpr int MAX_EVENTS = 64;
 
-unordered_map<string, RedisObject*> db;
+RedisDb database;
 
 bool setNonBlocking(int fd)
 {
@@ -118,7 +119,7 @@ void queueParsedReplies(Client& client)
 
     while (client.parser.tryParse(argv))
     {
-        client.write_buf += dispatch(argv, db);
+        client.write_buf += dispatch(argv, database.data);
     }
 }
 
