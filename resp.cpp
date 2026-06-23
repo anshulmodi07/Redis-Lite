@@ -210,3 +210,50 @@ size_t RespParser::bufferedSize() const
 {
     return buffer_.size();
 }
+
+string encodeSimpleString(const string& value)
+{
+    return "+" + value + "\r\n";
+}
+
+string encodeOK()
+{
+    return encodeSimpleString("OK");
+}
+
+string encodeError(const string& msg)
+{
+    return "-" + msg + "\r\n";
+}
+
+string encodeInteger(long long value)
+{
+    return ":" + to_string(value) + "\r\n";
+}
+
+string encodeBulkString(const string& value)
+{
+    return "$" + to_string(value.size()) + "\r\n" + value + "\r\n";
+}
+
+string encodeNullBulk()
+{
+    return "$-1\r\n";
+}
+
+string encodeArray(const vector<string>& items)
+{
+    string response = "*" + to_string(items.size()) + "\r\n";
+
+    for (const string& item : items)
+    {
+        response += encodeBulkString(item);
+    }
+
+    return response;
+}
+
+string encodeNullArray()
+{
+    return "*-1\r\n";
+}

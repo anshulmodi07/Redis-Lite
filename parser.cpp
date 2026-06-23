@@ -1,5 +1,7 @@
 #include "parser.h"
 
+#include "resp.h"
+
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
@@ -20,7 +22,7 @@ string uppercase(string value)
 
 string wrongArity(const string& command)
 {
-    return "ERR wrong number of arguments for '" + command + "' command\n";
+    return encodeError("ERR wrong number of arguments for '" + command + "' command");
 }
 
 string parseQuotedToken(const string& line, size_t& pos)
@@ -78,7 +80,7 @@ string commandPing(const vector<string>& argv)
         return wrongArity(argv[0]);
     }
 
-    return "PONG\n";
+    return encodeSimpleString("PONG");
 }
 
 string commandSet(
@@ -96,7 +98,7 @@ string commandSet(
         db[argv[1]] = argv[2];
     }
 
-    return "OK\n";
+    return encodeOK();
 }
 
 string commandGet(
@@ -114,10 +116,10 @@ string commandGet(
 
     if (it != db.end())
     {
-        return it->second + "\n";
+        return encodeBulkString(it->second);
     }
 
-    return "NOT FOUND\n";
+    return encodeNullBulk();
 }
 }
 
@@ -163,7 +165,7 @@ string dispatch(
 {
     if (argv.empty())
     {
-        return "ERR unknown command\n";
+        return encodeError("ERR unknown command");
     }
 
     vector<string> normalized = argv;
@@ -184,5 +186,5 @@ string dispatch(
         return commandGet(normalized, db, db_mutex);
     }
 
-    return "ERR unknown command\n";
+    return encodeError("ERR unknown command");
 }

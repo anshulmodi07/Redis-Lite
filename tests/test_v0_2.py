@@ -69,7 +69,7 @@ def stop_server(proc):
 
 
 def read_line(reader):
-    return reader.readline().decode("utf-8")
+    return reader.readline()
 
 
 def test_tokenizer_and_dispatch():
@@ -77,18 +77,18 @@ def test_tokenizer_and_dispatch():
         reader = sock.makefile("rb")
 
         sock.sendall(b'set mykey "hello world"\nGET mykey\n')
-        assert read_line(reader) == "OK\n"
-        assert read_line(reader) == "hello world\n"
+        assert read_line(reader) == b"+OK\r\n"
+        assert reader.read(18) == b"$11\r\nhello world\r\n"
 
         sock.sendall(b'SET quote "hello \\"redis\\""\nGET quote\n')
-        assert read_line(reader) == "OK\n"
-        assert read_line(reader) == 'hello "redis"\n'
+        assert read_line(reader) == b"+OK\r\n"
+        assert reader.read(20) == b'$13\r\nhello "redis"\r\n'
 
         sock.sendall(b"GET mykey extra\n")
-        assert read_line(reader) == "ERR wrong number of arguments for 'GET' command\n"
+        assert read_line(reader) == b"-ERR wrong number of arguments for 'GET' command\r\n"
 
         sock.sendall(b'SET broken "unterminated\n')
-        assert read_line(reader) == "ERR unterminated quoted string\n"
+        assert read_line(reader) == b"-ERR unterminated quoted string\r\n"
 
 
 def run_tests():

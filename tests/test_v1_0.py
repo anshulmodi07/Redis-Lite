@@ -69,7 +69,7 @@ def stop_server(proc):
 
 
 def read_line(reader):
-    return reader.readline().decode("utf-8")
+    return reader.readline()
 
 
 def command(*parts):
@@ -85,11 +85,11 @@ def test_resp_commands_and_pipelining():
         reader = sock.makefile("rb")
 
         sock.sendall(command("ping"))
-        assert read_line(reader) == "PONG\n"
+        assert read_line(reader) == b"+PONG\r\n"
 
         sock.sendall(command("SET", "space", "hello world") + command("GET", "space"))
-        assert read_line(reader) == "OK\n"
-        assert read_line(reader) == "hello world\n"
+        assert read_line(reader) == b"+OK\r\n"
+        assert reader.read(18) == b"$11\r\nhello world\r\n"
 
 
 def test_partial_bulk_string():
@@ -100,17 +100,17 @@ def test_partial_bulk_string():
         sock.sendall(payload[:15])
         time.sleep(0.05)
         sock.sendall(payload[15:])
-        assert read_line(reader) == "OK\n"
+        assert read_line(reader) == b"+OK\r\n"
 
         sock.sendall(command("GET", "split"))
-        assert read_line(reader) == "abcde\n"
+        assert reader.read(11) == b"$5\r\nabcde\r\n"
 
 
 def test_malformed_resp_errors():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         reader = sock.makefile("rb")
         sock.sendall(b"*1\r\n+PING\r\n")
-        assert read_line(reader) == "ERR protocol error: expected bulk string\n"
+        assert read_line(reader) == b"-ERR protocol error: expected bulk string\r\n"
 
 
 def run_tests():

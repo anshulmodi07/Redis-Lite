@@ -76,7 +76,7 @@ void handleClient(
 
         if (parser.bufferedSize() > MAX_REQUEST_BUFFER_SIZE)
         {
-            sendAll(client_fd, "ERR request too large\n");
+            sendAll(client_fd, encodeError("ERR request too large"));
             break;
         }
 
@@ -98,7 +98,7 @@ void handleClient(
         }
         catch (const invalid_argument& err)
         {
-            string response = string("ERR ") + err.what() + "\n";
+            string response = encodeError(string("ERR ") + err.what());
             if (!sendAll(client_fd, response))
             {
                 close(client_fd);
