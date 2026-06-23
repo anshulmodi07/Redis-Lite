@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include "cmd_string.h"
 #include "object.h"
 #include "resp.h"
 
@@ -76,18 +77,6 @@ string parseBareToken(const string& line, size_t& pos)
     return line.substr(start, pos - start);
 }
 
-void storeString(Db& db, const string& key, const string& value)
-{
-    auto it = db.find(key);
-    if (it != db.end())
-    {
-        destroyObject(it->second);
-        db.erase(it);
-    }
-
-    db[key] = createStringObject(value);
-}
-
 string commandPing(const vector<string>& argv)
 {
     if (argv.size() != 1)
@@ -96,39 +85,6 @@ string commandPing(const vector<string>& argv)
     }
 
     return encodeSimpleString("PONG");
-}
-
-string commandSet(const vector<string>& argv, Db& db)
-{
-    if (argv.size() != 3)
-    {
-        return wrongArity(argv[0]);
-    }
-
-    storeString(db, argv[1], argv[2]);
-    return encodeOK();
-}
-
-string commandGet(const vector<string>& argv, const Db& db)
-{
-    if (argv.size() != 2)
-    {
-        return wrongArity(argv[0]);
-    }
-
-    auto it = db.find(argv[1]);
-    if (it == db.end() || it->second->type != OBJ_STRING)
-    {
-        if (it != db.end())
-        {
-            return encodeError(
-                "WRONGTYPE Operation against a key holding the wrong kind of value");
-        }
-
-        return encodeNullBulk();
-    }
-
-    return encodeBulkString(getStringValue(it->second));
 }
 
 string commandType(const vector<string>& argv, const Db& db)
@@ -239,14 +195,13 @@ string dispatch(const vector<string>& argv, Db& db)
         return commandPing(normalized);
     }
 
-    if (normalized[0] == "SET")
+    if (normalized[0] == "SET" || normalized[0] == "GET" || normalized[0] == "GETSET"
+        || normalized[0] == "MSET" || normalized[0] == "MGET" || normalized[0] == "SETNX"
+        || normalized[0] == "SETEX" || normalized[0] == "INCR" || normalized[0] == "DECR"
+        || normalized[0] == "INCRBY" || normalized[0] == "DECRBY" || normalized[0] == "APPEND"
+        || normalized[0] == "STRLEN")
     {
-        return commandSet(normalized, db);
-    }
-
-    if (normalized[0] == "GET")
-    {
-        return commandGet(normalized, db);
+        return dispatchStringCommand(normalized, db);
     }
 
     if (normalized[0] == "TYPE")

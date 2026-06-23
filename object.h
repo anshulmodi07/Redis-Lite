@@ -32,6 +32,10 @@ struct RedisObject
     void* ptr;
 };
 
+using Db = std::unordered_map<std::string, RedisObject*>;
+
+bool tryParseInteger(const std::string& value, long long& out);
+
 RedisObject* createStringObject(const std::string& value);
 RedisObject* createListObject();
 RedisObject* createHashObject();
@@ -41,3 +45,7 @@ void destroyObject(RedisObject* obj);
 
 std::string objectTypeName(ObjectType type);
 std::string getStringValue(const RedisObject* obj);
+size_t stringObjectLength(const RedisObject* obj);
+bool readStringInteger(const RedisObject* obj, long long& out);
+void setStringInteger(RedisObject* obj, long long value);
+void setStringValue(RedisObject* obj, const std::string& value);

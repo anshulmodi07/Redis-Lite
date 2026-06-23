@@ -10,6 +10,7 @@ SERVER_SRC = ROOT / "server.cpp"
 PARSER_SRC = ROOT / "parser.cpp"
 RESP_SRC = ROOT / "resp.cpp"
 OBJECT_SRC = ROOT / "object.cpp"
+CMD_STRING_SRC = ROOT / "cmd_string.cpp"
 EVENTLOOP_SRC = ROOT / "eventloop.cpp"
 SERVER_BIN = ROOT / "tests" / "server_v1_1_bin"
 HOST = "127.0.0.1"
@@ -31,6 +32,7 @@ def compile_server():
             str(PARSER_SRC),
             str(RESP_SRC),
             str(OBJECT_SRC),
+            str(CMD_STRING_SRC),
             str(EVENTLOOP_SRC),
         ],
         cwd=ROOT,

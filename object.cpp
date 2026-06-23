@@ -4,49 +4,72 @@
 
 using namespace std;
 
+bool tryParseInteger(const string& value, long long& out)
+{
+    if (value.empty())
+    {
+        return false;
+    }
+
+    try
+    {
+        size_t consumed = 0;
+        out = stoll(value, &consumed);
+        return consumed == value.size();
+    }
+    catch (const exception&)
+    {
+        return false;
+    }
+}
+
 RedisObject* createStringObject(const string& value)
 {
-    auto* obj = new RedisObject{
+    long long integer = 0;
+    if (tryParseInteger(value, integer))
+    {
+        return new RedisObject{
+            OBJ_STRING,
+            ENC_INT,
+            new long long(integer)};
+    }
+
+    return new RedisObject{
         OBJ_STRING,
         ENC_RAW,
         new string(value)};
-    return obj;
 }
 
 RedisObject* createListObject()
 {
-    auto* obj = new RedisObject{
+    return new RedisObject{
         OBJ_LIST,
         ENC_QUICKLIST,
         new list<string>()};
-    return obj;
 }
 
 RedisObject* createHashObject()
 {
-    auto* obj = new RedisObject{
+    return new RedisObject{
         OBJ_HASH,
         ENC_HASHTABLE,
         new unordered_map<string, string>()};
-    return obj;
 }
 
 RedisObject* createSetObject()
 {
-    auto* obj = new RedisObject{
+    return new RedisObject{
         OBJ_SET,
         ENC_HASHTABLE,
         new unordered_set<string>()};
-    return obj;
 }
 
 RedisObject* createZSetObject()
 {
-    auto* obj = new RedisObject{
+    return new RedisObject{
         OBJ_ZSET,
         ENC_SKIPLIST,
         new unordered_map<string, double>()};
-    return obj;
 }
 
 void destroyObject(RedisObject* obj)
@@ -62,6 +85,10 @@ void destroyObject(RedisObject* obj)
         if (obj->encoding == ENC_RAW)
         {
             delete static_cast<string*>(obj->ptr);
+        }
+        else if (obj->encoding == ENC_INT)
+        {
+            delete static_cast<long long*>(obj->ptr);
         }
         break;
     case OBJ_LIST:
@@ -102,10 +129,94 @@ string objectTypeName(ObjectType type)
 
 string getStringValue(const RedisObject* obj)
 {
-    if (obj == nullptr || obj->type != OBJ_STRING || obj->encoding != ENC_RAW)
+    if (obj == nullptr || obj->type != OBJ_STRING)
     {
-        throw invalid_argument("value is not a raw string object");
+        throw invalid_argument("value is not a string object");
     }
 
-    return *static_cast<const string*>(obj->ptr);
+    if (obj->encoding == ENC_INT)
+    {
+        return to_string(*static_cast<const long long*>(obj->ptr));
+    }
+
+    if (obj->encoding == ENC_RAW)
+    {
+        return *static_cast<const string*>(obj->ptr);
+    }
+
+    throw invalid_argument("unsupported string encoding");
+}
+
+size_t stringObjectLength(const RedisObject* obj)
+{
+    return getStringValue(obj).size();
+}
+
+bool readStringInteger(const RedisObject* obj, long long& out)
+{
+    if (obj == nullptr || obj->type != OBJ_STRING)
+    {
+        return false;
+    }
+
+    if (obj->encoding == ENC_INT)
+    {
+        out = *static_cast<const long long*>(obj->ptr);
+        return true;
+    }
+
+    if (obj->encoding == ENC_RAW)
+    {
+        return tryParseInteger(getStringValue(obj), out);
+    }
+
+    return false;
+}
+
+void setStringInteger(RedisObject* obj, long long value)
+{
+    if (obj == nullptr || obj->type != OBJ_STRING)
+    {
+        throw invalid_argument("value is not a string object");
+    }
+
+    if (obj->encoding == ENC_RAW)
+    {
+        delete static_cast<string*>(obj->ptr);
+    }
+    else if (obj->encoding == ENC_INT)
+    {
+        delete static_cast<long long*>(obj->ptr);
+    }
+
+    obj->encoding = ENC_INT;
+    obj->ptr = new long long(value);
+}
+
+void setStringValue(RedisObject* obj, const string& value)
+{
+    if (obj == nullptr || obj->type != OBJ_STRING)
+    {
+        throw invalid_argument("value is not a string object");
+    }
+
+    if (obj->encoding == ENC_RAW)
+    {
+        delete static_cast<string*>(obj->ptr);
+    }
+    else if (obj->encoding == ENC_INT)
+    {
+        delete static_cast<long long*>(obj->ptr);
+    }
+
+    long long integer = 0;
+    if (tryParseInteger(value, integer))
+    {
+        obj->encoding = ENC_INT;
+        obj->ptr = new long long(integer);
+        return;
+    }
+
+    obj->encoding = ENC_RAW;
+    obj->ptr = new string(value);
 }

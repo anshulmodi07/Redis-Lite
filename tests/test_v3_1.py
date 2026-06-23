@@ -6,13 +6,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVER_SRC = ROOT / "server.cpp"
-PARSER_SRC = ROOT / "parser.cpp"
-RESP_SRC = ROOT / "resp.cpp"
-OBJECT_SRC = ROOT / "object.cpp"
-CMD_STRING_SRC = ROOT / "cmd_string.cpp"
-EVENTLOOP_SRC = ROOT / "eventloop.cpp"
-SERVER_BIN = ROOT / "tests" / "server_v3_0_bin"
+SOURCES = [
+    ROOT / "server.cpp",
+    ROOT / "parser.cpp",
+    ROOT / "resp.cpp",
+    ROOT / "object.cpp",
+    ROOT / "cmd_string.cpp",
+    ROOT / "eventloop.cpp",
+]
+SERVER_BIN = ROOT / "tests" / "server_v3_1_bin"
 HOST = "127.0.0.1"
 PORT = 8080
 
@@ -20,21 +22,7 @@ PORT = 8080
 def compile_server():
     cxx = os.environ.get("CXX", "g++")
     subprocess.run(
-        [
-            cxx,
-            "-std=c++17",
-            "-Wall",
-            "-Wextra",
-            "-pthread",
-            "-o",
-            str(SERVER_BIN),
-            str(SERVER_SRC),
-            str(PARSER_SRC),
-            str(RESP_SRC),
-            str(OBJECT_SRC),
-            str(CMD_STRING_SRC),
-            str(EVENTLOOP_SRC),
-        ],
+        [cxx, "-std=c++17", "-Wall", "-Wextra", "-pthread", "-o", str(SERVER_BIN), *map(str, SOURCES)],
         cwd=ROOT,
         check=True,
     )
@@ -65,7 +53,6 @@ def start_server():
 def stop_server(proc):
     if proc.poll() is not None:
         return
-
     proc.terminate()
     try:
         proc.wait(timeout=3)
@@ -88,69 +75,76 @@ def read_line(reader):
     return line
 
 
-def test_type_reports_string_and_none():
+def test_incr_and_append():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         sock.settimeout(1)
         reader = sock.makefile("rb")
 
-        sock.sendall(command("SET", "foo", "bar"))
+        sock.sendall(command("SET", "counter", "0"))
         assert read_line(reader) == b"+OK\r\n"
 
-        sock.sendall(command("TYPE", "foo"))
-        assert read_line(reader) == b"+string\r\n"
+        sock.sendall(command("INCR", "counter"))
+        assert read_line(reader) == b":1\r\n"
 
-        sock.sendall(command("TYPE", "missing"))
-        assert read_line(reader) == b"+none\r\n"
+        sock.sendall(command("INCRBY", "counter", "5"))
+        assert read_line(reader) == b":6\r\n"
+
+        sock.sendall(command("APPEND", "mykey", "hello"))
+        assert read_line(reader) == b":5\r\n"
+
+        sock.sendall(command("APPEND", "mykey", " world"))
+        assert read_line(reader) == b":11\r\n"
+
+        sock.sendall(command("STRLEN", "mykey"))
+        assert read_line(reader) == b":11\r\n"
 
 
-def test_del_frees_keys_and_exists_counts():
+def test_setnx_and_set_nx():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         sock.settimeout(1)
         reader = sock.makefile("rb")
 
-        sock.sendall(command("SET", "foo", "bar"))
-        assert read_line(reader) == b"+OK\r\n"
-
-        sock.sendall(command("EXISTS", "foo", "missing"))
-        assert read_line(reader) == b":1\r\n"
-
-        sock.sendall(command("DEL", "foo"))
-        assert read_line(reader) == b":1\r\n"
-
-        sock.sendall(command("EXISTS", "foo"))
+        sock.sendall(command("SETNX", "mykey", "999"))
         assert read_line(reader) == b":0\r\n"
 
-        sock.sendall(command("GET", "foo"))
+        sock.sendall(command("SET", "k", "v", "NX"))
+        assert read_line(reader) == b"+OK\r\n"
+
+        sock.sendall(command("SET", "k", "v2", "NX"))
         assert read_line(reader) == b"$-1\r\n"
 
 
-def test_set_replaces_existing_object():
+def test_mset_mget_and_getset():
     with socket.create_connection((HOST, PORT), timeout=2) as sock:
         sock.settimeout(1)
         reader = sock.makefile("rb")
 
-        sock.sendall(command("SET", "key", "first"))
+        sock.sendall(command("MSET", "a", "1", "b", "2"))
         assert read_line(reader) == b"+OK\r\n"
 
-        sock.sendall(command("SET", "key", "second"))
-        assert read_line(reader) == b"+OK\r\n"
+        sock.sendall(command("MGET", "a", "b", "missing"))
+        assert read_line(reader) == b"*3\r\n"
+        assert reader.read(7) == b"$1\r\n1\r\n"
+        assert reader.read(7) == b"$1\r\n2\r\n"
+        assert read_line(reader) == b"$-1\r\n"
 
-        sock.sendall(command("GET", "key"))
-        assert reader.read(12) == b"$6\r\nsecond\r\n"
+        sock.sendall(command("GETSET", "a", "9"))
+        assert reader.read(7) == b"$1\r\n1\r\n"
+        sock.sendall(command("GET", "a"))
+        assert reader.read(7) == b"$1\r\n9\r\n"
 
 
 def run_tests():
     compile_server()
-
     proc = start_server()
     try:
-        test_type_reports_string_and_none()
-        test_del_frees_keys_and_exists_counts()
-        test_set_replaces_existing_object()
+        test_incr_and_append()
+        test_setnx_and_set_nx()
+        test_mset_mget_and_getset()
     finally:
         stop_server(proc)
 
 
 if __name__ == "__main__":
     run_tests()
-    print("v3.0 typed object tests passed")
+    print("v3.1 string command tests passed")
