@@ -26,6 +26,7 @@ namespace
 constexpr size_t BUFFER_SIZE = 1024;
 constexpr size_t MAX_REQUEST_BUFFER_SIZE = 4096;
 constexpr int MAX_EVENTS = 64;
+constexpr int EPOLL_WAIT_TIMEOUT_MS = 100;
 
 RedisDb database;
 
@@ -119,7 +120,7 @@ void queueParsedReplies(Client& client)
 
     while (client.parser.tryParse(argv))
     {
-        client.write_buf += dispatch(argv, database.data);
+        client.write_buf += dispatch(argv, database);
     }
 }
 
@@ -229,7 +230,7 @@ int runEventLoop(int server_fd)
             epoll_fd,
             events.data(),
             static_cast<int>(events.size()),
-            -1);
+            EPOLL_WAIT_TIMEOUT_MS);
         if (ready < 0)
         {
             if (errno == EINTR)
@@ -241,6 +242,8 @@ int runEventLoop(int server_fd)
             close(epoll_fd);
             return 1;
         }
+
+        activeExpireCycle(database);
 
         vector<int> to_close;
         for (int i = 0; i < ready; ++i)

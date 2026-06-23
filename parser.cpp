@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <stdexcept>
 
 using namespace std;
@@ -147,6 +148,39 @@ string commandExists(const vector<string>& argv, const Db& db)
 
     return encodeInteger(count);
 }
+
+vector<size_t> keyPositions(const vector<string>& argv)
+{
+    if (argv.empty())
+    {
+        return {};
+    }
+
+    const string& cmd = argv[0];
+    vector<size_t> positions;
+    auto key1 = [&]() {
+        if (argv.size() > 1) positions.push_back(1);
+    };
+
+    if (cmd == "MGET" || cmd == "DEL" || cmd == "EXISTS" || cmd == "SINTER" || cmd == "SUNION" || cmd == "SDIFF")
+    {
+        for (size_t i = 1; i < argv.size(); ++i) positions.push_back(i);
+    }
+    else if (cmd == "MSET")
+    {
+        for (size_t i = 1; i < argv.size(); i += 2) positions.push_back(i);
+    }
+    else if (cmd == "SINTERSTORE" || cmd == "SUNIONSTORE" || cmd == "SDIFFSTORE")
+    {
+        for (size_t i = 1; i < argv.size(); ++i) positions.push_back(i);
+    }
+    else
+    {
+        key1();
+    }
+
+    return positions;
+}
 }
 
 vector<string> tokenize(const string& line)
@@ -258,4 +292,24 @@ string dispatch(const vector<string>& argv, Db& db)
     }
 
     return encodeError("ERR unknown command");
+}
+
+string dispatch(const vector<string>& argv, RedisDb& db)
+{
+    vector<string> normalized = argv;
+    if (!normalized.empty())
+    {
+        normalized[0] = uppercase(normalized[0]);
+    }
+
+    set<size_t> seen;
+    for (size_t pos : keyPositions(normalized))
+    {
+        if (pos < normalized.size() && seen.insert(pos).second)
+        {
+            expireIfNeeded(db, normalized[pos]);
+        }
+    }
+
+    return dispatch(normalized, db.data);
 }
