@@ -9,6 +9,7 @@
 #include <cstring>
 
 #include "parser.h"
+#include "resp.h"
 
 using namespace std;
 
@@ -16,7 +17,7 @@ namespace
 {
 constexpr int PORT = 8080;
 constexpr size_t BUFFER_SIZE = 1024;
-constexpr size_t MAX_LINE_BUFFER_SIZE = 4096;
+constexpr size_t MAX_REQUEST_BUFFER_SIZE = 4096;
 
 unordered_map<string, string> db;
 mutex db_mutex;
@@ -44,28 +45,16 @@ bool sendAll(int client_fd, const string& response)
     return true;
 }
 
-string processCommand(string line)
+string processCommand(const vector<string>& argv)
 {
-    if (!line.empty() && line.back() == '\r')
-    {
-        line.pop_back();
-    }
-
-    try
-    {
-        return dispatch(tokenize(line), db, db_mutex);
-    }
-    catch (const invalid_argument& err)
-    {
-        return string("ERR ") + err.what() + "\n";
-    }
+    return dispatch(argv, db, db_mutex);
 }
 }
 
 void handleClient(
     int client_fd)
 {
-    string line_buffer;
+    RespParser parser;
 
     while (true)
     {
@@ -74,7 +63,7 @@ void handleClient(
         ssize_t bytes = recv(
             client_fd,
             buffer,
-            sizeof(buffer) - 1,
+            sizeof(buffer),
             0);
 
         if (bytes <= 0)
@@ -83,31 +72,39 @@ void handleClient(
             break;
         }
 
-        buffer[bytes] = '\0';
-        line_buffer.append(buffer, static_cast<size_t>(bytes));
+        parser.feed(buffer, static_cast<size_t>(bytes));
 
-        if (line_buffer.size() > MAX_LINE_BUFFER_SIZE)
+        if (parser.bufferedSize() > MAX_REQUEST_BUFFER_SIZE)
         {
             sendAll(client_fd, "ERR request too large\n");
             break;
         }
 
-        size_t newline_pos = string::npos;
-
-        while ((newline_pos = line_buffer.find('\n')) != string::npos)
+        vector<string> argv;
+        try
         {
-            string line = line_buffer.substr(0, newline_pos);
-            line_buffer.erase(0, newline_pos + 1);
+            while (parser.tryParse(argv))
+            {
+                cout << "Received command with " << argv.size() << " argument(s)" << endl;
 
-            cout << "Received: " << line << endl;
+                string response = processCommand(argv);
 
-            string response = processCommand(line);
-
+                if (!sendAll(client_fd, response))
+                {
+                    close(client_fd);
+                    return;
+                }
+            }
+        }
+        catch (const invalid_argument& err)
+        {
+            string response = string("ERR ") + err.what() + "\n";
             if (!sendAll(client_fd, response))
             {
                 close(client_fd);
                 return;
             }
+            break;
         }
     }
 

@@ -166,19 +166,22 @@ string dispatch(
         return "ERR unknown command\n";
     }
 
-    if (argv[0] == "PING")
+    vector<string> normalized = argv;
+    normalized[0] = uppercase(normalized[0]);
+
+    if (normalized[0] == "PING")
     {
-        return commandPing(argv);
+        return commandPing(normalized);
     }
 
-    if (argv[0] == "SET")
+    if (normalized[0] == "SET")
     {
-        return commandSet(argv, db, db_mutex);
+        return commandSet(normalized, db, db_mutex);
     }
 
-    if (argv[0] == "GET")
+    if (normalized[0] == "GET")
     {
-        return commandGet(argv, db, db_mutex);
+        return commandGet(normalized, db, db_mutex);
     }
 
     return "ERR unknown command\n";
