@@ -2167,10 +2167,10 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 ## Quick Reference — Version Checklist
 
 ```
-[ ] V0.1  SO_REUSEADDR, per-client recv buffer with line framing
-[ ] V0.2  Proper tokenizer, vector<string> argv, arity checks
-[ ] V1.0  RESP2 decoder (state machine, feed/tryParse pattern)
-[ ] V1.1  RESP2 encoder (encodeOK, encodeBulkString, encodeArray...)
+[x] V0.1  SO_REUSEADDR, per-client recv buffer with line framing
+[x] V0.2  Proper tokenizer, vector<string> argv, arity checks
+[x] V1.0  RESP2 decoder (state machine, feed/tryParse pattern)
+[x] V1.1  RESP2 encoder (encodeOK, encodeBulkString, encodeArray...)
 [ ] V2.0  poll()-based event loop, per-client struct, non-blocking sockets
 [ ] V2.1  epoll-based loop, EPOLLOUT only when needed
 [ ] V3.0  RedisObject type wrapper (type + encoding + void* ptr)

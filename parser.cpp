@@ -85,33 +85,26 @@ string commandPing(const vector<string>& argv)
 
 string commandSet(
     const vector<string>& argv,
-    unordered_map<string, string>& db,
-    mutex& db_mutex)
+    unordered_map<string, string>& db)
 {
     if (argv.size() != 3)
     {
         return wrongArity(argv[0]);
     }
 
-    {
-        lock_guard<mutex> lock(db_mutex);
-        db[argv[1]] = argv[2];
-    }
-
+    db[argv[1]] = argv[2];
     return encodeOK();
 }
 
 string commandGet(
     const vector<string>& argv,
-    unordered_map<string, string>& db,
-    mutex& db_mutex)
+    unordered_map<string, string>& db)
 {
     if (argv.size() != 2)
     {
         return wrongArity(argv[0]);
     }
 
-    lock_guard<mutex> lock(db_mutex);
     auto it = db.find(argv[1]);
 
     if (it != db.end())
@@ -160,8 +153,7 @@ vector<string> tokenize(const string& line)
 
 string dispatch(
     const vector<string>& argv,
-    unordered_map<string, string>& db,
-    mutex& db_mutex)
+    unordered_map<string, string>& db)
 {
     if (argv.empty())
     {
@@ -178,12 +170,12 @@ string dispatch(
 
     if (normalized[0] == "SET")
     {
-        return commandSet(normalized, db, db_mutex);
+        return commandSet(normalized, db);
     }
 
     if (normalized[0] == "GET")
     {
-        return commandGet(normalized, db, db_mutex);
+        return commandGet(normalized, db);
     }
 
     return encodeError("ERR unknown command");

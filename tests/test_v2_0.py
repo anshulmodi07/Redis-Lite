@@ -10,7 +10,7 @@ SERVER_SRC = ROOT / "server.cpp"
 PARSER_SRC = ROOT / "parser.cpp"
 RESP_SRC = ROOT / "resp.cpp"
 EVENTLOOP_SRC = ROOT / "eventloop.cpp"
-SERVER_BIN = ROOT / "tests" / "server_v1_0_bin"
+SERVER_BIN = ROOT / "tests" / "server_v2_0_bin"
 HOST = "127.0.0.1"
 PORT = 8080
 
@@ -70,10 +70,6 @@ def stop_server(proc):
         proc.wait(timeout=3)
 
 
-def read_line(reader):
-    return reader.readline()
-
-
 def command(*parts):
     frame = f"*{len(parts)}\r\n".encode("utf-8")
     for part in parts:
@@ -82,37 +78,34 @@ def command(*parts):
     return frame
 
 
-def test_resp_commands_and_pipelining():
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        reader = sock.makefile("rb")
+def test_idle_client_does_not_block_active_client():
+    idle = socket.create_connection((HOST, PORT), timeout=2)
+    try:
+        with socket.create_connection((HOST, PORT), timeout=2) as active:
+            active.settimeout(1)
+            reader = active.makefile("rb")
 
-        sock.sendall(command("ping"))
-        assert read_line(reader) == b"+PONG\r\n"
-
-        sock.sendall(command("SET", "space", "hello world") + command("GET", "space"))
-        assert read_line(reader) == b"+OK\r\n"
-        assert reader.read(18) == b"$11\r\nhello world\r\n"
-
-
-def test_partial_bulk_string():
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        reader = sock.makefile("rb")
-
-        payload = command("SET", "split", "abcde")
-        sock.sendall(payload[:15])
-        time.sleep(0.05)
-        sock.sendall(payload[15:])
-        assert read_line(reader) == b"+OK\r\n"
-
-        sock.sendall(command("GET", "split"))
-        assert reader.read(11) == b"$5\r\nabcde\r\n"
+            active.sendall(command("PING"))
+            assert reader.readline() == b"+PONG\r\n"
+    finally:
+        idle.close()
 
 
-def test_malformed_resp_errors():
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        reader = sock.makefile("rb")
-        sock.sendall(b"*1\r\n+PING\r\n")
-        assert read_line(reader) == b"-ERR protocol error: expected bulk string\r\n"
+def test_multiple_clients_keep_independent_parser_state():
+    with socket.create_connection((HOST, PORT), timeout=2) as first:
+        with socket.create_connection((HOST, PORT), timeout=2) as second:
+            first_reader = first.makefile("rb")
+            second_reader = second.makefile("rb")
+
+            first.sendall(command("SET", "a", "1"))
+            second.sendall(command("SET", "b", "2"))
+            assert first_reader.readline() == b"+OK\r\n"
+            assert second_reader.readline() == b"+OK\r\n"
+
+            first.sendall(command("GET", "b"))
+            second.sendall(command("GET", "a"))
+            assert first_reader.read(7) == b"$1\r\n2\r\n"
+            assert second_reader.read(7) == b"$1\r\n1\r\n"
 
 
 def run_tests():
@@ -120,13 +113,12 @@ def run_tests():
 
     proc = start_server()
     try:
-        test_resp_commands_and_pipelining()
-        test_partial_bulk_string()
-        test_malformed_resp_errors()
+        test_idle_client_does_not_block_active_client()
+        test_multiple_clients_keep_independent_parser_state()
     finally:
         stop_server(proc)
 
 
 if __name__ == "__main__":
     run_tests()
-    print("v1.0 resp decoder tests passed")
+    print("v2.0 poll event loop tests passed")

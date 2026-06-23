@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER_SRC = ROOT / "server.cpp"
 PARSER_SRC = ROOT / "parser.cpp"
 RESP_SRC = ROOT / "resp.cpp"
+EVENTLOOP_SRC = ROOT / "eventloop.cpp"
 SERVER_BIN = ROOT / "tests" / "server_v1_1_bin"
 HOST = "127.0.0.1"
 PORT = 8080
@@ -28,6 +29,7 @@ def compile_server():
             str(SERVER_SRC),
             str(PARSER_SRC),
             str(RESP_SRC),
+            str(EVENTLOOP_SRC),
         ],
         cwd=ROOT,
         check=True,
