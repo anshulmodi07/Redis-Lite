@@ -1,5 +1,7 @@
 #include "object.h"
 
+#include "skiplist.h"
+
 #include <stdexcept>
 
 using namespace std;
@@ -69,7 +71,7 @@ RedisObject* createZSetObject()
     return new RedisObject{
         OBJ_ZSET,
         ENC_SKIPLIST,
-        new unordered_map<string, double>()};
+        new ZSet()};
 }
 
 void destroyObject(RedisObject* obj)
@@ -101,7 +103,7 @@ void destroyObject(RedisObject* obj)
         delete static_cast<unordered_set<string>*>(obj->ptr);
         break;
     case OBJ_ZSET:
-        delete static_cast<unordered_map<string, double>*>(obj->ptr);
+        delete static_cast<ZSet*>(obj->ptr);
         break;
     }
 

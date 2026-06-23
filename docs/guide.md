@@ -1151,6 +1151,10 @@ For C++: implement `SkipList` as a class with `insert(score, member)`, `remove(m
 `getRank(member)`, `getRange(start, stop)`, `getRangeByScore(min, max)`. Use a random height
 with probability 0.25 per additional level (Redis uses 0.25, not 0.5), MAX_LEVEL = 32.
 
+Implementation note for this build: V3.5 keeps the `SkipList` API boundary, but backs it with
+C++ ordered containers to finish the command behavior first. A hand-rolled probabilistic skip
+list can replace that internal representation later without changing command handlers.
+
 📁 **Files**: Create `skiplist.h` / `skiplist.cpp`, `cmd_zset.cpp`
 
 🔧 **Commands to implement**:

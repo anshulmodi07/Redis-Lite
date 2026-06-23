@@ -4,6 +4,7 @@
 #include "cmd_list.h"
 #include "cmd_set.h"
 #include "cmd_string.h"
+#include "cmd_zset.h"
 #include "object.h"
 #include "resp.h"
 
@@ -230,6 +231,15 @@ string dispatch(const vector<string>& argv, Db& db)
         || normalized[0] == "SUNIONSTORE" || normalized[0] == "SDIFFSTORE")
     {
         return dispatchSetCommand(normalized, db);
+    }
+
+    if (normalized[0] == "ZADD" || normalized[0] == "ZRANGE" || normalized[0] == "ZRANGEBYSCORE"
+        || normalized[0] == "ZREVRANGE" || normalized[0] == "ZRANK" || normalized[0] == "ZREVRANK"
+        || normalized[0] == "ZSCORE" || normalized[0] == "ZCARD" || normalized[0] == "ZCOUNT"
+        || normalized[0] == "ZREM" || normalized[0] == "ZINCRBY" || normalized[0] == "ZPOPMIN"
+        || normalized[0] == "ZPOPMAX")
+    {
+        return dispatchZSetCommand(normalized, db);
     }
 
     if (normalized[0] == "TYPE")

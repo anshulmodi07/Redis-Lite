@@ -15,6 +15,8 @@ SOURCES = [
     ROOT / "cmd_hash.cpp",
     ROOT / "cmd_list.cpp",
     ROOT / "cmd_set.cpp",
+    ROOT / "cmd_zset.cpp",
+    ROOT / "skiplist.cpp",
     ROOT / "eventloop.cpp",
 ]
 SERVER_BIN = ROOT / "tests" / "server_v3_1_bin"

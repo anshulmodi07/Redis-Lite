@@ -14,6 +14,8 @@ CMD_STRING_SRC = ROOT / "cmd_string.cpp"
 CMD_HASH_SRC = ROOT / "cmd_hash.cpp"
 CMD_LIST_SRC = ROOT / "cmd_list.cpp"
 CMD_SET_SRC = ROOT / "cmd_set.cpp"
+CMD_ZSET_SRC = ROOT / "cmd_zset.cpp"
+SKIPLIST_SRC = ROOT / "skiplist.cpp"
 EVENTLOOP_SRC = ROOT / "eventloop.cpp"
 SERVER_BIN = ROOT / "tests" / "server_v0_2_bin"
 HOST = "127.0.0.1"
@@ -39,6 +41,8 @@ def compile_server():
             str(CMD_HASH_SRC),
             str(CMD_LIST_SRC),
             str(CMD_SET_SRC),
+            str(CMD_ZSET_SRC),
+            str(SKIPLIST_SRC),
             str(EVENTLOOP_SRC),
         ],
         cwd=ROOT,
