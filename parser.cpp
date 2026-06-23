@@ -1,6 +1,7 @@
 #include "parser.h"
 
 #include "cmd_hash.h"
+#include "cmd_list.h"
 #include "cmd_string.h"
 #include "object.h"
 #include "resp.h"
@@ -211,6 +212,14 @@ string dispatch(const vector<string>& argv, Db& db)
         || normalized[0] == "HGETALL" || normalized[0] == "HINCRBY")
     {
         return dispatchHashCommand(normalized, db);
+    }
+
+    if (normalized[0] == "LPUSH" || normalized[0] == "RPUSH" || normalized[0] == "LPOP"
+        || normalized[0] == "RPOP" || normalized[0] == "LLEN" || normalized[0] == "LRANGE"
+        || normalized[0] == "LINDEX" || normalized[0] == "LSET" || normalized[0] == "LINSERT"
+        || normalized[0] == "LREM" || normalized[0] == "LTRIM")
+    {
+        return dispatchListCommand(normalized, db);
     }
 
     if (normalized[0] == "TYPE")
