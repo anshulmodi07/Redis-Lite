@@ -2172,7 +2172,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V1.0  RESP2 decoder (state machine, feed/tryParse pattern)
 [x] V1.1  RESP2 encoder (encodeOK, encodeBulkString, encodeArray...)
 [ ] V2.0  poll()-based event loop, per-client struct, non-blocking sockets
-[ ] V2.1  epoll-based loop, EPOLLOUT only when needed
+[x] V2.1  epoll-based loop, EPOLLOUT only when needed
 [ ] V3.0  RedisObject type wrapper (type + encoding + void* ptr)
 [ ] V3.1  Full string commands (INCR, APPEND, MSET/MGET, EX/NX options)
 [ ] V3.2  Hash commands (HSET, HGET, HGETALL, HINCRBY, WRONGTYPE check)
