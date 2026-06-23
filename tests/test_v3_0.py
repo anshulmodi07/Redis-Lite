@@ -11,7 +11,7 @@ PARSER_SRC = ROOT / "parser.cpp"
 RESP_SRC = ROOT / "resp.cpp"
 OBJECT_SRC = ROOT / "object.cpp"
 EVENTLOOP_SRC = ROOT / "eventloop.cpp"
-SERVER_BIN = ROOT / "tests" / "server_v2_0_bin"
+SERVER_BIN = ROOT / "tests" / "server_v3_0_bin"
 HOST = "127.0.0.1"
 PORT = 8080
 
@@ -80,34 +80,61 @@ def command(*parts):
     return frame
 
 
-def test_idle_client_does_not_block_active_client():
-    idle = socket.create_connection((HOST, PORT), timeout=2)
-    try:
-        with socket.create_connection((HOST, PORT), timeout=2) as active:
-            active.settimeout(1)
-            reader = active.makefile("rb")
-
-            active.sendall(command("PING"))
-            assert reader.readline() == b"+PONG\r\n"
-    finally:
-        idle.close()
+def read_line(reader):
+    line = reader.readline()
+    assert line.endswith(b"\r\n"), line
+    return line
 
 
-def test_multiple_clients_keep_independent_parser_state():
-    with socket.create_connection((HOST, PORT), timeout=2) as first:
-        with socket.create_connection((HOST, PORT), timeout=2) as second:
-            first_reader = first.makefile("rb")
-            second_reader = second.makefile("rb")
+def test_type_reports_string_and_none():
+    with socket.create_connection((HOST, PORT), timeout=2) as sock:
+        sock.settimeout(1)
+        reader = sock.makefile("rb")
 
-            first.sendall(command("SET", "a", "1"))
-            second.sendall(command("SET", "b", "2"))
-            assert first_reader.readline() == b"+OK\r\n"
-            assert second_reader.readline() == b"+OK\r\n"
+        sock.sendall(command("SET", "foo", "bar"))
+        assert read_line(reader) == b"+OK\r\n"
 
-            first.sendall(command("GET", "b"))
-            second.sendall(command("GET", "a"))
-            assert first_reader.read(7) == b"$1\r\n2\r\n"
-            assert second_reader.read(7) == b"$1\r\n1\r\n"
+        sock.sendall(command("TYPE", "foo"))
+        assert read_line(reader) == b"+string\r\n"
+
+        sock.sendall(command("TYPE", "missing"))
+        assert read_line(reader) == b"+none\r\n"
+
+
+def test_del_frees_keys_and_exists_counts():
+    with socket.create_connection((HOST, PORT), timeout=2) as sock:
+        sock.settimeout(1)
+        reader = sock.makefile("rb")
+
+        sock.sendall(command("SET", "foo", "bar"))
+        assert read_line(reader) == b"+OK\r\n"
+
+        sock.sendall(command("EXISTS", "foo", "missing"))
+        assert read_line(reader) == b":1\r\n"
+
+        sock.sendall(command("DEL", "foo"))
+        assert read_line(reader) == b":1\r\n"
+
+        sock.sendall(command("EXISTS", "foo"))
+        assert read_line(reader) == b":0\r\n"
+
+        sock.sendall(command("GET", "foo"))
+        assert read_line(reader) == b"$-1\r\n"
+
+
+def test_set_replaces_existing_object():
+    with socket.create_connection((HOST, PORT), timeout=2) as sock:
+        sock.settimeout(1)
+        reader = sock.makefile("rb")
+
+        sock.sendall(command("SET", "key", "first"))
+        assert read_line(reader) == b"+OK\r\n"
+
+        sock.sendall(command("SET", "key", "second"))
+        assert read_line(reader) == b"+OK\r\n"
+
+        sock.sendall(command("GET", "key"))
+        assert reader.read(12) == b"$6\r\nsecond\r\n"
 
 
 def run_tests():
@@ -115,12 +142,13 @@ def run_tests():
 
     proc = start_server()
     try:
-        test_idle_client_does_not_block_active_client()
-        test_multiple_clients_keep_independent_parser_state()
+        test_type_reports_string_and_none()
+        test_del_frees_keys_and_exists_counts()
+        test_set_replaces_existing_object()
     finally:
         stop_server(proc)
 
 
 if __name__ == "__main__":
     run_tests()
-    print("v2.0 poll event loop tests passed")
+    print("v3.0 typed object tests passed")

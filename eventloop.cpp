@@ -1,6 +1,7 @@
 #include "eventloop.h"
 
 #include "client.h"
+#include "object.h"
 #include "parser.h"
 #include "resp.h"
 
@@ -25,7 +26,7 @@ constexpr size_t BUFFER_SIZE = 1024;
 constexpr size_t MAX_REQUEST_BUFFER_SIZE = 4096;
 constexpr int MAX_EVENTS = 64;
 
-unordered_map<string, string> db;
+unordered_map<string, RedisObject*> db;
 
 bool setNonBlocking(int fd)
 {

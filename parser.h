@@ -1,5 +1,7 @@
 #pragma once
 
+#include "object.h"
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -8,4 +10,4 @@ std::vector<std::string> tokenize(const std::string& line);
 
 std::string dispatch(
     const std::vector<std::string>& argv,
-    std::unordered_map<std::string, std::string>& db);
+    std::unordered_map<std::string, RedisObject*>& db);
