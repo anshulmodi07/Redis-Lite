@@ -2199,7 +2199,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V6.0  Command dispatch table, INFO/CONFIG/KEYS/SCAN/DEBUG commands
 [x] V7.0  maxmemory config + approximated LRU/LFU eviction
 [x] V8.0  RDB snapshot (blocking SAVE)
-[ ] V8.1  Fork-based BGSAVE (non-blocking)
+[x] V8.1  Fork-based BGSAVE (non-blocking)
 [ ] V8.2  AOF append + replay on startup
 [ ] V8.3  AOF fsync policies (always/everysec/no) + BGREWRITEAOF
 [ ] V9.0  Pub/Sub (SUBSCRIBE, PUBLISH, PSUBSCRIBE, channel state machine)

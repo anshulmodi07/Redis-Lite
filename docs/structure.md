@@ -1,6 +1,6 @@
 # Project Structure
 
-Current version: V8.0
+Current version: V8.1
 
 ```text
 |-- rdb.h / rdb.cpp           # RDB snapshot save/load, CRC64, default dump.rdb path
@@ -13,7 +13,7 @@ Current version: V8.0
 
 ## File Responsibilities
 
-- `rdb.cpp` — encodes all five types to `REDIS0011` format; `loadRDB` replaces in-memory state after CRC check.
+- `rdb.cpp` — `saveRDB`/`loadRDB` (V8.0); `startBgsave`/`checkBgsaveChild` via `fork()` (V8.1).
 - `eventloop.cpp` — if `dump.rdb` exists at boot, calls `loadRDB()` before `initCommandTable()` client traffic.
 - `commands.cpp` — `SAVE` invokes `saveRDB(g_rdb_filename, ctx.databases)` (blocks entire server).
 

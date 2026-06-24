@@ -512,6 +512,21 @@ string commandSave(CommandContext& ctx, const vector<string>&)
     return encodeOK();
 }
 
+string commandBgsave(CommandContext& ctx, const vector<string>&)
+{
+    if (bgsaveInProgress())
+    {
+        return encodeError("ERR Background save already in progress");
+    }
+
+    if (!startBgsave(ctx.databases))
+    {
+        return encodeError("bgsave failed");
+    }
+
+    return encodeSimpleString("Background saving started");
+}
+
 void registerUtilityCommands(CommandTable& out)
 {
     add(out, "PING", -1, CMD_READONLY, commandPing);
@@ -531,6 +546,7 @@ void registerUtilityCommands(CommandTable& out)
     add(out, "DEBUG", 3, CMD_READONLY, commandDebugSleep);
     add(out, "CONFIG", -3, CMD_READONLY, commandConfig);
     add(out, "SAVE", 1, CMD_READONLY, commandSave);
+    add(out, "BGSAVE", 1, CMD_READONLY, commandBgsave);
 }
 }
 

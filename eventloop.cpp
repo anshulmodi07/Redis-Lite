@@ -258,6 +258,8 @@ int runEventLoop(int server_fd)
             activeExpireCycle(db);
         }
 
+        checkBgsaveChild();
+
         vector<int> to_close;
         for (int i = 0; i < ready; ++i)
         {

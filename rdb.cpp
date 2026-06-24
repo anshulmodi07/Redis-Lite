@@ -10,12 +10,22 @@
 #include <fstream>
 #include <vector>
 
+#if defined(__linux__) || defined(__APPLE__)
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 using namespace std;
 
 string g_rdb_filename = "dump.rdb";
 
 namespace
 {
+#if defined(__linux__) || defined(__APPLE__)
+pid_t bgsave_child_pid = 0;
+bool bgsave_in_progress = false;
+#endif
 constexpr uint8_t RDB_OPCODE_RESIZEDB = 0xFB;
 constexpr uint8_t RDB_OPCODE_EXPIRETIME_MS = 0xFC;
 constexpr uint8_t RDB_OPCODE_SELECTDB = 0xFE;
@@ -718,4 +728,64 @@ bool loadRDB(const string& path, vector<RedisDb>& databases)
             db.expires.erase(key);
         }
     }
+}
+
+bool bgsaveInProgress()
+{
+#if defined(__linux__) || defined(__APPLE__)
+    return bgsave_in_progress;
+#else
+    return false;
+#endif
+}
+
+bool startBgsave(const vector<RedisDb>& databases)
+{
+#if defined(__linux__) || defined(__APPLE__)
+    if (bgsave_in_progress)
+    {
+        return false;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0)
+    {
+        return false;
+    }
+
+    if (pid == 0)
+    {
+        bool ok = saveRDB(g_rdb_filename, databases);
+        _exit(ok ? 0 : 1);
+    }
+
+    bgsave_child_pid = pid;
+    bgsave_in_progress = true;
+    return true;
+#else
+    (void)databases;
+    return false;
+#endif
+}
+
+void checkBgsaveChild()
+{
+#if defined(__linux__) || defined(__APPLE__)
+    if (!bgsave_in_progress)
+    {
+        return;
+    }
+
+    int status = 0;
+    pid_t pid = waitpid(bgsave_child_pid, &status, WNOHANG);
+    if (pid == 0)
+    {
+        return;
+    }
+
+    bgsave_in_progress = false;
+    bgsave_child_pid = 0;
+#else
+    return;
+#endif
 }
