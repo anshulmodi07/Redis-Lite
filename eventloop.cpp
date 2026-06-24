@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "aof.h"
 #include "pubsub.h"
+#include "multi.h"
 #include "rdb.h"
 #include "resp.h"
 
@@ -70,6 +71,7 @@ bool updateClientEvents(int epoll_fd, const Client& client)
 void closeClient(int epoll_fd, unordered_map<int, Client>& clients, int fd)
 {
     pubsubCleanup(fd);
+    watchCleanup(fd, clients);
     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
     close(fd);
     clients.erase(fd);

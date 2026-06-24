@@ -70,6 +70,7 @@ string parseBareToken(const string& line, size_t& pos)
 
     return line.substr(start, pos - start);
 }
+}
 
 vector<size_t> keyPositions(const vector<string>& argv)
 {
@@ -131,7 +132,6 @@ vector<size_t> keyPositions(const vector<string>& argv)
     }
 
     return positions;
-}
 }
 
 vector<string> tokenize(const string& line)

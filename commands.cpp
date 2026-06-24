@@ -652,6 +652,7 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
     string result = cmd.func(ctx, argv);
     if ((cmd.flags & CMD_WRITE) != 0)
     {
+        notifyWriteKeys(ctx, argv, cmd.flags);
         aofAppendCommand(argv);
     }
 

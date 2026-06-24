@@ -8,6 +8,7 @@
 #include <vector>
 
 std::vector<std::string> tokenize(const std::string& line);
+std::vector<size_t> keyPositions(const std::vector<std::string>& argv);
 
 std::string dispatch(
     Client& client,

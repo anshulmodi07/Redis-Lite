@@ -1,16 +1,16 @@
 # Project Structure
 
-Current version: V10.0
+Current version: V10.1
 
 ```text
-|-- multi.h / multi.cpp     # MULTI/EXEC/DISCARD transaction queue
-|-- client.h                # in_multi, multi_error, queued_commands
-|-- resp.h / resp.cpp       # encodeRespArray for EXEC replies
-`-- tests/test_v10_0.py
+|-- multi.h / multi.cpp     # MULTI/EXEC/DISCARD + WATCH registry
+|-- client.h                # dirty, watches, transaction queue
+|-- parser.h / parser.cpp   # exported keyPositions() for write notifications
+`-- tests/test_v10_1.py
 ```
 
 ## File Responsibilities
 
-- `multi.cpp` — queue commands after `MULTI`, run batch on `EXEC`, `DISCARD` clears state.
-- `commands.cpp` — `tryTransaction()` before normal dispatch; `exec_replay` skips re-queueing.
-- `client.h` — per-connection transaction state.
+- `multi.cpp` — `watched_keys` map; `WATCH`, dirty marking on writes, `EXEC` abort via `*-1`.
+- `commands.cpp` — `notifyWriteKeys()` after successful writes.
+- `eventloop.cpp` — `watchCleanup()` on disconnect.

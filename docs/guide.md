@@ -2204,7 +2204,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V8.3  AOF fsync policies (always/everysec/no) + BGREWRITEAOF
 [x] V9.0  Pub/Sub (SUBSCRIBE, PUBLISH, PSUBSCRIBE, channel state machine)
 [x] V10.0 MULTI/EXEC/DISCARD transactions
-[ ] V10.1 WATCH optimistic locking
+[x] V10.1 WATCH optimistic locking
 [ ] V11.0 Pipelining verification + benchmark
 [ ] V11.1 Lua scripting (EVAL/EVALSHA, redis.call())
 [ ] V11.2 Primary-Replica replication (PSYNC, RDB transfer, write stream)

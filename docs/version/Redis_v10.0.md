@@ -46,4 +46,4 @@ python tests/test_v10_0.py
 
 # Next
 
-V10.1 — `WATCH` optimistic locking.
+V10.1 — `WATCH` optimistic locking (see `Redis_v10.1.md`).
