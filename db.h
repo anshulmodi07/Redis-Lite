@@ -19,7 +19,56 @@ struct RedisDb
 inline long long nowMs()
 {
     using namespace std::chrono;
-    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+inline bool keyExists(const RedisDb& db, const std::string& key)
+{
+    return db.data.find(key) != db.data.end();
+}
+
+inline bool setExpireAtMs(RedisDb& db, const std::string& key, long long expire_ms)
+{
+    if (!keyExists(db, key))
+    {
+        return false;
+    }
+
+    db.expires[key] = expire_ms;
+    return true;
+}
+
+inline bool removeExpire(RedisDb& db, const std::string& key)
+{
+    return db.expires.erase(key) > 0;
+}
+
+inline long long ttlMilliseconds(const RedisDb& db, const std::string& key)
+{
+    if (!keyExists(db, key))
+    {
+        return -2;
+    }
+
+    auto it = db.expires.find(key);
+    if (it == db.expires.end())
+    {
+        return -1;
+    }
+
+    long long remaining = it->second - nowMs();
+    return remaining > 0 ? remaining : 0;
+}
+
+inline long long ttlSeconds(const RedisDb& db, const std::string& key)
+{
+    long long pttl = ttlMilliseconds(db, key);
+    if (pttl < 0)
+    {
+        return pttl;
+    }
+
+    return pttl / 1000;
 }
 
 inline bool isExpired(const RedisDb& db, const std::string& key)

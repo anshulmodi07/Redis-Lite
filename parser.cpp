@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include "cmd_expire.h"
 #include "cmd_hash.h"
 #include "cmd_list.h"
 #include "cmd_set.h"
@@ -108,7 +109,7 @@ string commandType(const vector<string>& argv, const Db& db)
     return encodeSimpleString(objectTypeName(it->second->type));
 }
 
-string commandDel(const vector<string>& argv, Db& db)
+string commandDel(const vector<string>& argv, RedisDb& db)
 {
     if (argv.size() < 2)
     {
@@ -118,11 +119,12 @@ string commandDel(const vector<string>& argv, Db& db)
     long long removed = 0;
     for (size_t i = 1; i < argv.size(); ++i)
     {
-        auto it = db.find(argv[i]);
-        if (it != db.end())
+        auto it = db.data.find(argv[i]);
+        if (it != db.data.end())
         {
             destroyObject(it->second);
-            db.erase(it);
+            db.data.erase(it);
+            db.expires.erase(argv[i]);
             ++removed;
         }
     }
@@ -174,6 +176,11 @@ vector<size_t> keyPositions(const vector<string>& argv)
     {
         for (size_t i = 1; i < argv.size(); ++i) positions.push_back(i);
     }
+    else if (cmd == "EXPIRE" || cmd == "PEXPIRE" || cmd == "EXPIREAT" || cmd == "PEXPIREAT"
+        || cmd == "TTL" || cmd == "PTTL" || cmd == "PERSIST")
+    {
+        key1();
+    }
     else
     {
         key1();
@@ -218,7 +225,7 @@ vector<string> tokenize(const string& line)
     return argv;
 }
 
-string dispatch(const vector<string>& argv, Db& db)
+string dispatchCommands(const vector<string>& argv, RedisDb& db)
 {
     if (argv.empty())
     {
@@ -242,12 +249,19 @@ string dispatch(const vector<string>& argv, Db& db)
         return dispatchStringCommand(normalized, db);
     }
 
+    if (normalized[0] == "EXPIRE" || normalized[0] == "PEXPIRE" || normalized[0] == "EXPIREAT"
+        || normalized[0] == "PEXPIREAT" || normalized[0] == "TTL" || normalized[0] == "PTTL"
+        || normalized[0] == "PERSIST")
+    {
+        return dispatchExpireCommand(normalized, db);
+    }
+
     if (normalized[0] == "HSET" || normalized[0] == "HMSET" || normalized[0] == "HGET"
         || normalized[0] == "HMGET" || normalized[0] == "HDEL" || normalized[0] == "HEXISTS"
         || normalized[0] == "HLEN" || normalized[0] == "HKEYS" || normalized[0] == "HVALS"
         || normalized[0] == "HGETALL" || normalized[0] == "HINCRBY")
     {
-        return dispatchHashCommand(normalized, db);
+        return dispatchHashCommand(normalized, db.data);
     }
 
     if (normalized[0] == "LPUSH" || normalized[0] == "RPUSH" || normalized[0] == "LPOP"
@@ -255,7 +269,7 @@ string dispatch(const vector<string>& argv, Db& db)
         || normalized[0] == "LINDEX" || normalized[0] == "LSET" || normalized[0] == "LINSERT"
         || normalized[0] == "LREM" || normalized[0] == "LTRIM")
     {
-        return dispatchListCommand(normalized, db);
+        return dispatchListCommand(normalized, db.data);
     }
 
     if (normalized[0] == "SADD" || normalized[0] == "SREM" || normalized[0] == "SMEMBERS"
@@ -264,7 +278,7 @@ string dispatch(const vector<string>& argv, Db& db)
         || normalized[0] == "SUNION" || normalized[0] == "SDIFF" || normalized[0] == "SINTERSTORE"
         || normalized[0] == "SUNIONSTORE" || normalized[0] == "SDIFFSTORE")
     {
-        return dispatchSetCommand(normalized, db);
+        return dispatchSetCommand(normalized, db.data);
     }
 
     if (normalized[0] == "ZADD" || normalized[0] == "ZRANGE" || normalized[0] == "ZRANGEBYSCORE"
@@ -273,12 +287,12 @@ string dispatch(const vector<string>& argv, Db& db)
         || normalized[0] == "ZREM" || normalized[0] == "ZINCRBY" || normalized[0] == "ZPOPMIN"
         || normalized[0] == "ZPOPMAX")
     {
-        return dispatchZSetCommand(normalized, db);
+        return dispatchZSetCommand(normalized, db.data);
     }
 
     if (normalized[0] == "TYPE")
     {
-        return commandType(normalized, db);
+        return commandType(normalized, db.data);
     }
 
     if (normalized[0] == "DEL")
@@ -288,7 +302,7 @@ string dispatch(const vector<string>& argv, Db& db)
 
     if (normalized[0] == "EXISTS")
     {
-        return commandExists(normalized, db);
+        return commandExists(normalized, db.data);
     }
 
     return encodeError("ERR unknown command");
@@ -311,5 +325,5 @@ string dispatch(const vector<string>& argv, RedisDb& db)
         }
     }
 
-    return dispatch(normalized, db.data);
+    return dispatchCommands(normalized, db);
 }

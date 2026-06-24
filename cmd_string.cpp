@@ -72,8 +72,12 @@ struct SetOptions
     bool xx = false;
     bool has_ex = false;
     bool has_px = false;
+    bool has_exat = false;
+    bool has_pxat = false;
     long long ex = 0;
     long long px = 0;
+    long long exat = 0;
+    long long pxat = 0;
 };
 
 bool parseSetOptions(const vector<string>& argv, SetOptions& opts, string& err)
@@ -120,6 +124,32 @@ bool parseSetOptions(const vector<string>& argv, SetOptions& opts, string& err)
             continue;
         }
 
+        if (opt == "EXAT")
+        {
+            if (i + 1 >= argv.size())
+            {
+                err = "syntax error";
+                return false;
+            }
+
+            opts.has_exat = true;
+            opts.exat = stoll(argv[++i]);
+            continue;
+        }
+
+        if (opt == "PXAT")
+        {
+            if (i + 1 >= argv.size())
+            {
+                err = "syntax error";
+                return false;
+            }
+
+            opts.has_pxat = true;
+            opts.pxat = stoll(argv[++i]);
+            continue;
+        }
+
         err = "syntax error";
         return false;
     }
@@ -130,7 +160,44 @@ bool parseSetOptions(const vector<string>& argv, SetOptions& opts, string& err)
         return false;
     }
 
+    int ttl_opts = (opts.has_ex ? 1 : 0) + (opts.has_px ? 1 : 0)
+        + (opts.has_exat ? 1 : 0) + (opts.has_pxat ? 1 : 0);
+    if (ttl_opts > 1)
+    {
+        err = "syntax error";
+        return false;
+    }
+
     return true;
+}
+
+void applySetExpiry(RedisDb& db, const string& key, const SetOptions& opts)
+{
+    if (opts.has_ex)
+    {
+        db.expires[key] = nowMs() + opts.ex * 1000;
+        return;
+    }
+
+    if (opts.has_px)
+    {
+        db.expires[key] = nowMs() + opts.px;
+        return;
+    }
+
+    if (opts.has_exat)
+    {
+        db.expires[key] = opts.exat * 1000;
+        return;
+    }
+
+    if (opts.has_pxat)
+    {
+        db.expires[key] = opts.pxat;
+        return;
+    }
+
+    db.expires.erase(key);
 }
 
 bool canSetKey(const Db& db, const string& key, const SetOptions& opts)
@@ -150,7 +217,7 @@ bool canSetKey(const Db& db, const string& key, const SetOptions& opts)
     return true;
 }
 
-string commandSet(const vector<string>& argv, Db& db)
+string commandSet(const vector<string>& argv, RedisDb& db)
 {
     if (argv.size() < 3)
     {
@@ -164,12 +231,13 @@ string commandSet(const vector<string>& argv, Db& db)
         return encodeError("ERR " + err);
     }
 
-    if (!canSetKey(db, argv[1], opts))
+    if (!canSetKey(db.data, argv[1], opts))
     {
         return encodeNullBulk();
     }
 
-    putString(db, argv[1], argv[2]);
+    putString(db.data, argv[1], argv[2]);
+    applySetExpiry(db, argv[1], opts);
     return encodeOK();
 }
 
@@ -260,14 +328,16 @@ string commandSetNx(const vector<string>& argv, Db& db)
     return encodeInteger(1);
 }
 
-string commandSetEx(const vector<string>& argv, Db& db)
+string commandSetEx(const vector<string>& argv, RedisDb& db)
 {
     if (argv.size() != 4)
     {
         return wrongArity(argv[0]);
     }
 
-    putString(db, argv[1], argv[3]);
+    long long seconds = stoll(argv[2]);
+    putString(db.data, argv[1], argv[3]);
+    db.expires[argv[1]] = nowMs() + seconds * 1000;
     return encodeOK();
 }
 
@@ -346,7 +416,7 @@ string commandStrLen(const vector<string>& argv, const Db& db)
 }
 }
 
-string dispatchStringCommand(const vector<string>& argv, Db& db)
+string dispatchStringCommand(const vector<string>& argv, RedisDb& db)
 {
     const string& cmd = argv[0];
 
@@ -357,27 +427,27 @@ string dispatchStringCommand(const vector<string>& argv, Db& db)
 
     if (cmd == "GET")
     {
-        return commandGet(argv, db);
+        return commandGet(argv, db.data);
     }
 
     if (cmd == "GETSET")
     {
-        return commandGetSet(argv, db);
+        return commandGetSet(argv, db.data);
     }
 
     if (cmd == "MSET")
     {
-        return commandMSet(argv, db);
+        return commandMSet(argv, db.data);
     }
 
     if (cmd == "MGET")
     {
-        return commandMGet(argv, db);
+        return commandMGet(argv, db.data);
     }
 
     if (cmd == "SETNX")
     {
-        return commandSetNx(argv, db);
+        return commandSetNx(argv, db.data);
     }
 
     if (cmd == "SETEX")
@@ -387,12 +457,12 @@ string dispatchStringCommand(const vector<string>& argv, Db& db)
 
     if (cmd == "INCR")
     {
-        return commandIncrBy(argv, db, 1);
+        return commandIncrBy(argv, db.data, 1);
     }
 
     if (cmd == "DECR")
     {
-        return commandIncrBy(argv, db, -1);
+        return commandIncrBy(argv, db.data, -1);
     }
 
     if (cmd == "INCRBY")
@@ -402,7 +472,7 @@ string dispatchStringCommand(const vector<string>& argv, Db& db)
             return wrongArity(argv[0]);
         }
 
-        return adjustInteger(db, argv[1], stoll(argv[2]));
+        return adjustInteger(db.data, argv[1], stoll(argv[2]));
     }
 
     if (cmd == "DECRBY")
@@ -412,17 +482,17 @@ string dispatchStringCommand(const vector<string>& argv, Db& db)
             return wrongArity(argv[0]);
         }
 
-        return adjustInteger(db, argv[1], -stoll(argv[2]));
+        return adjustInteger(db.data, argv[1], -stoll(argv[2]));
     }
 
     if (cmd == "APPEND")
     {
-        return commandAppend(argv, db);
+        return commandAppend(argv, db.data);
     }
 
     if (cmd == "STRLEN")
     {
-        return commandStrLen(argv, db);
+        return commandStrLen(argv, db.data);
     }
 
     return encodeError("ERR unknown command");

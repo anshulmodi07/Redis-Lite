@@ -11,6 +11,7 @@ SOURCES = [
     ROOT / "resp.cpp",
     ROOT / "object.cpp",
     ROOT / "cmd_string.cpp",
+    ROOT / "cmd_expire.cpp",
     ROOT / "cmd_hash.cpp",
     ROOT / "cmd_list.cpp",
     ROOT / "cmd_set.cpp",

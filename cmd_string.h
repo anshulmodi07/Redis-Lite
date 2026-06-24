@@ -1,10 +1,10 @@
 #pragma once
 
-#include "object.h"
+#include "db.h"
 
 #include <string>
 #include <vector>
 
 std::string dispatchStringCommand(
     const std::vector<std::string>& argv,
-    Db& db);
+    RedisDb& db);

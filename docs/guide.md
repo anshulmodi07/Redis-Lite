@@ -2186,7 +2186,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V4.0  Expiry metadata map
 [x] V4.1  Lazy expiry on every read
 [x] V4.2  Active expiry sweep (periodic, sampling-based)
-[ ] V4.3  EXPIRE/TTL/PERSIST command family
+[x] V4.3  EXPIRE/TTL/PERSIST command family
 [ ] V5.0  SDS strings
 [ ] V5.1  listpack encoding for small collections
 [ ] V5.2  intset encoding for integer sets

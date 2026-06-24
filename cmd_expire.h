@@ -1,14 +1,10 @@
 #pragma once
 
 #include "db.h"
-#include "object.h"
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-std::vector<std::string> tokenize(const std::string& line);
-
-std::string dispatch(
+std::string dispatchExpireCommand(
     const std::vector<std::string>& argv,
     RedisDb& db);
