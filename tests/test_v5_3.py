@@ -26,9 +26,9 @@ SERVER_SOURCES = PROBE_SOURCES + [
     ROOT / "server.cpp",
     ROOT / "eventloop.cpp",
 ]
-SERVER_BIN = ROOT / "tests" / "server_v5_2_bin"
-PROBE_BIN = ROOT / "tests" / "probe_v5_2_bin"
-PROBE_SRC = ROOT / "tests" / "probe_v5_2.cpp"
+SERVER_BIN = ROOT / "tests" / "server_v5_3_bin"
+PROBE_BIN = ROOT / "tests" / "probe_v5_3_bin"
+PROBE_SRC = ROOT / "tests" / "probe_v5_3.cpp"
 HOST = "127.0.0.1"
 PORT = 8080
 
@@ -53,7 +53,12 @@ def run_probe():
             "-I",
             str(ROOT),
             str(PROBE_SRC),
+            ROOT / "encoding.cpp",
+            ROOT / "listpack.cpp",
             ROOT / "intset.cpp",
+            ROOT / "sds.cpp",
+            ROOT / "object.cpp",
+            ROOT / "skiplist.cpp",
             "-o",
             str(PROBE_BIN),
         ],
@@ -112,7 +117,7 @@ def read_line(reader):
 def read_bulk(reader):
     prefix = read_line(reader)
     assert prefix.startswith(b"$"), prefix
-    length = int(prefix[1:3])
+    length = int(prefix[1:-2])
     if length == -1:
         return None
     data = reader.read(length)
@@ -121,25 +126,73 @@ def read_bulk(reader):
     return data
 
 
-def test_set_regression():
-    with socket.create_connection((HOST, PORT), timeout=2) as sock:
-        sock.settimeout(1)
-        reader = sock.makefile("rb")
+def test_hash_promotion(sock):
+    reader = sock.makefile("rb")
 
-        sock.sendall(command("SADD", "nums", "1", "3", "2"))
-        assert read_line(reader) == b":3\r\n"
+    sock.sendall(command("HSET", "small", "a", "1", "b", "2"))
+    assert read_line(reader) == b":2\r\n"
 
-        sock.sendall(command("SADD", "nums", "2"))
-        assert read_line(reader) == b":0\r\n"
+    sock.sendall(command("OBJECT", "ENCODING", "small"))
+    assert read_bulk(reader) == b"listpack"
 
-        sock.sendall(command("SISMEMBER", "nums", "3"))
+    for i in range(3, 132):
+        sock.sendall(command("HSET", "small", f"field{i}", str(i)))
         assert read_line(reader) == b":1\r\n"
 
-        sock.sendall(command("SREM", "nums", "1"))
-        assert read_line(reader) == b":1\r\n"
+    sock.sendall(command("OBJECT", "ENCODING", "small"))
+    assert read_bulk(reader) == b"hashtable"
 
-        sock.sendall(command("SCARD", "nums"))
-        assert read_line(reader) == b":2\r\n"
+    sock.sendall(command("HGET", "small", "field130"))
+    assert read_bulk(reader) == b"130"
+
+
+def test_set_intset_to_listpack(sock):
+    reader = sock.makefile("rb")
+
+    sock.sendall(command("SADD", "nums", "1", "2", "3"))
+    assert read_line(reader) == b":3\r\n"
+
+    sock.sendall(command("OBJECT", "ENCODING", "nums"))
+    assert read_bulk(reader) == b"intset"
+
+    sock.sendall(command("SADD", "nums", "alpha"))
+    assert read_line(reader) == b":1\r\n"
+
+    sock.sendall(command("OBJECT", "ENCODING", "nums"))
+    assert read_bulk(reader) == b"listpack"
+
+    sock.sendall(command("SISMEMBER", "nums", "alpha"))
+    assert read_line(reader) == b":1\r\n"
+
+
+def test_list_promotion(sock):
+    reader = sock.makefile("rb")
+
+    sock.sendall(command("RPUSH", "biglist", "seed"))
+    assert read_line(reader) == b":1\r\n"
+
+    sock.sendall(command("OBJECT", "ENCODING", "biglist"))
+    assert read_bulk(reader) == b"listpack"
+
+    for i in range(129):
+        sock.sendall(command("RPUSH", "biglist", f"item{i}"))
+        assert read_line(reader).startswith(b":")
+
+    sock.sendall(command("OBJECT", "ENCODING", "biglist"))
+    assert read_bulk(reader) == b"quicklist"
+
+    sock.sendall(command("LLEN", "biglist"))
+    assert read_line(reader) == b":130\r\n"
+
+
+def test_regression(sock):
+    reader = sock.makefile("rb")
+
+    sock.sendall(command("ZADD", "scores", "10", "alice", "20", "bob"))
+    assert read_line(reader) == b":2\r\n"
+
+    sock.sendall(command("LRANGE", "biglist", "0", "-1"))
+    assert read_line(reader).startswith(b"*")
 
 
 def main():
@@ -147,10 +200,15 @@ def main():
     compile_server()
     proc = start_server()
     try:
-        test_set_regression()
+        with socket.create_connection((HOST, PORT), timeout=2) as sock:
+            sock.settimeout(2)
+            test_hash_promotion(sock)
+            test_set_intset_to_listpack(sock)
+            test_list_promotion(sock)
+            test_regression(sock)
     finally:
         stop_server(proc)
-    print("test_v5_2.py: all tests passed")
+    print("test_v5_3.py: all tests passed")
 
 
 if __name__ == "__main__":

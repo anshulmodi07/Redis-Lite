@@ -6,6 +6,7 @@
 #include "cmd_set.h"
 #include "cmd_string.h"
 #include "cmd_zset.h"
+#include "encoding.h"
 #include "object.h"
 #include "resp.h"
 
@@ -149,6 +150,22 @@ string commandExists(const vector<string>& argv, const Db& db)
     }
 
     return encodeInteger(count);
+}
+
+string commandObjectEncoding(const vector<string>& argv, const Db& db)
+{
+    if (argv.size() != 3 || uppercase(argv[1]) != "ENCODING")
+    {
+        return wrongArity("OBJECT");
+    }
+
+    auto it = db.find(argv[2]);
+    if (it == db.end())
+    {
+        return encodeNullBulk();
+    }
+
+    return encodeBulkString(objectEncodingName(it->second));
 }
 
 vector<size_t> keyPositions(const vector<string>& argv)
@@ -303,6 +320,11 @@ string dispatchCommands(const vector<string>& argv, RedisDb& db)
     if (normalized[0] == "EXISTS")
     {
         return commandExists(normalized, db.data);
+    }
+
+    if (normalized[0] == "OBJECT")
+    {
+        return commandObjectEncoding(normalized, db.data);
     }
 
     return encodeError("ERR unknown command");

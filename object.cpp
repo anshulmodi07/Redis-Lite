@@ -1,5 +1,7 @@
 #include "object.h"
 
+#include "intset.h"
+#include "listpack.h"
 #include "sds.h"
 #include "skiplist.h"
 
@@ -47,32 +49,32 @@ RedisObject* createListObject()
 {
     return new RedisObject{
         OBJ_LIST,
-        ENC_QUICKLIST,
-        new list<string>()};
+        ENC_LISTPACK,
+        lpNew()};
 }
 
 RedisObject* createHashObject()
 {
     return new RedisObject{
         OBJ_HASH,
-        ENC_HASHTABLE,
-        new unordered_map<string, string>()};
+        ENC_LISTPACK,
+        lpNew()};
 }
 
 RedisObject* createSetObject()
 {
     return new RedisObject{
         OBJ_SET,
-        ENC_HASHTABLE,
-        new unordered_set<string>()};
+        ENC_INTSET,
+        intsetNew()};
 }
 
 RedisObject* createZSetObject()
 {
     return new RedisObject{
         OBJ_ZSET,
-        ENC_SKIPLIST,
-        new ZSet()};
+        ENC_LISTPACK,
+        lpNew()};
 }
 
 void destroyObject(RedisObject* obj)
@@ -95,16 +97,48 @@ void destroyObject(RedisObject* obj)
         }
         break;
     case OBJ_LIST:
-        delete static_cast<list<string>*>(obj->ptr);
+        if (obj->encoding == ENC_LISTPACK)
+        {
+            lpFree(static_cast<listpack>(obj->ptr));
+        }
+        else
+        {
+            delete static_cast<list<string>*>(obj->ptr);
+        }
         break;
     case OBJ_HASH:
-        delete static_cast<unordered_map<string, string>*>(obj->ptr);
+        if (obj->encoding == ENC_LISTPACK)
+        {
+            lpFree(static_cast<listpack>(obj->ptr));
+        }
+        else
+        {
+            delete static_cast<unordered_map<string, string>*>(obj->ptr);
+        }
         break;
     case OBJ_SET:
-        delete static_cast<unordered_set<string>*>(obj->ptr);
+        if (obj->encoding == ENC_INTSET)
+        {
+            intsetFree(static_cast<intset>(obj->ptr));
+        }
+        else if (obj->encoding == ENC_LISTPACK)
+        {
+            lpFree(static_cast<listpack>(obj->ptr));
+        }
+        else
+        {
+            delete static_cast<unordered_set<string>*>(obj->ptr);
+        }
         break;
     case OBJ_ZSET:
-        delete static_cast<ZSet*>(obj->ptr);
+        if (obj->encoding == ENC_LISTPACK)
+        {
+            lpFree(static_cast<listpack>(obj->ptr));
+        }
+        else
+        {
+            delete static_cast<ZSet*>(obj->ptr);
+        }
         break;
     }
 

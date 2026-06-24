@@ -1,7 +1,9 @@
 #include "cmd_set.h"
 
+#include "encoding.h"
 #include "resp.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <unordered_set>
 #include <vector>
@@ -10,8 +12,6 @@ using namespace std;
 
 namespace
 {
-using RedisSet = unordered_set<string>;
-
 string wrongArity(const string& command)
 {
     return encodeError("ERR wrong number of arguments for '" + command + "' command");
@@ -22,7 +22,7 @@ string wrongType()
     return encodeError("WRONGTYPE Operation against a key holding the wrong kind of value");
 }
 
-RedisSet* lookupSet(Db& db, const string& key, bool create, bool& type_error)
+RedisObject* lookupSet(Db& db, const string& key, bool create, bool& type_error)
 {
     type_error = false;
     auto it = db.find(key);
@@ -36,7 +36,7 @@ RedisSet* lookupSet(Db& db, const string& key, bool create, bool& type_error)
 
         RedisObject* obj = createSetObject();
         db[key] = obj;
-        return static_cast<RedisSet*>(obj->ptr);
+        return obj;
     }
 
     if (it->second->type != OBJ_SET)
@@ -45,10 +45,10 @@ RedisSet* lookupSet(Db& db, const string& key, bool create, bool& type_error)
         return nullptr;
     }
 
-    return static_cast<RedisSet*>(it->second->ptr);
+    return it->second;
 }
 
-const RedisSet* getSet(const Db& db, const string& key, bool& type_error)
+const RedisObject* getSetObject(const Db& db, const string& key, bool& type_error)
 {
     type_error = false;
     auto it = db.find(key);
@@ -64,10 +64,10 @@ const RedisSet* getSet(const Db& db, const string& key, bool& type_error)
         return nullptr;
     }
 
-    return static_cast<const RedisSet*>(it->second->ptr);
+    return it->second;
 }
 
-void storeSetMembers(Db& db, const string& key, const RedisSet& members)
+void storeSetMembers(Db& db, const string& key, const vector<string>& members)
 {
     auto it = db.find(key);
     if (it != db.end())
@@ -77,51 +77,43 @@ void storeSetMembers(Db& db, const string& key, const RedisSet& members)
     }
 
     RedisObject* obj = createSetObject();
-    RedisSet* set = static_cast<RedisSet*>(obj->ptr);
-    *set = members;
+    setReplaceMembers(obj, members);
     db[key] = obj;
 }
 
-vector<string> setToVector(const RedisSet& set)
+string randomMember(const vector<string>& members)
 {
-    return vector<string>(set.begin(), set.end());
+    return members[static_cast<size_t>(rand() % members.size())];
 }
 
-string randomMember(const RedisSet& set)
+vector<string> randomMembers(const vector<string>& members, long long count)
 {
-    auto it = set.begin();
-    advance(it, static_cast<long>(rand() % set.size()));
-    return *it;
-}
-
-vector<string> randomMembers(const RedisSet& set, long long count)
-{
-    vector<string> members = setToVector(set);
+    vector<string> pool = members;
     vector<string> picked;
 
     if (count > 0)
     {
-        long long to_pick = min<long long>(count, static_cast<long long>(members.size()));
+        const long long to_pick = min<long long>(count, static_cast<long long>(pool.size()));
         for (long long i = 0; i < to_pick; ++i)
         {
-            size_t idx = static_cast<size_t>(rand() % members.size());
-            picked.push_back(members[idx]);
-            members.erase(members.begin() + static_cast<long>(idx));
+            const size_t idx = static_cast<size_t>(rand() % pool.size());
+            picked.push_back(pool[idx]);
+            pool.erase(pool.begin() + static_cast<long>(idx));
         }
     }
     else
     {
-        long long picks = -count;
+        const long long picks = -count;
         for (long long i = 0; i < picks; ++i)
         {
-            picked.push_back(randomMember(set));
+            picked.push_back(randomMember(members));
         }
     }
 
     return picked;
 }
 
-bool collectSets(const Db& db, const vector<string>& keys, vector<const RedisSet*>& out, string& err)
+bool collectSetMembers(const Db& db, const vector<string>& keys, vector<vector<string>>& out, string& err)
 {
     out.clear();
     out.reserve(keys.size());
@@ -129,40 +121,43 @@ bool collectSets(const Db& db, const vector<string>& keys, vector<const RedisSet
     for (const string& key : keys)
     {
         bool type_error = false;
-        const RedisSet* set = getSet(db, key, type_error);
+        const RedisObject* set = getSetObject(db, key, type_error);
         if (type_error)
         {
             err = wrongType();
             return false;
         }
 
-        out.push_back(set);
+        out.push_back(set == nullptr ? vector<string>{} : setMembers(set));
     }
 
     return true;
 }
 
-RedisSet setIntersection(const vector<const RedisSet*>& sets)
+vector<string> setIntersection(const vector<vector<string>>& sets)
 {
-    RedisSet result;
-
-    for (const RedisSet* set : sets)
+    if (sets.empty())
     {
-        if (set == nullptr || set->empty())
+        return {};
+    }
+
+    for (const vector<string>& set : sets)
+    {
+        if (set.empty())
         {
             return {};
         }
     }
 
-    result = *sets.front();
+    vector<string> result = sets.front();
     for (size_t i = 1; i < sets.size(); ++i)
     {
-        RedisSet next;
+        vector<string> next;
         for (const string& member : result)
         {
-            if (sets[i]->count(member) > 0)
+            if (find(sets[i].begin(), sets[i].end(), member) != sets[i].end())
             {
-                next.insert(member);
+                next.push_back(member);
             }
         }
 
@@ -172,47 +167,34 @@ RedisSet setIntersection(const vector<const RedisSet*>& sets)
     return result;
 }
 
-RedisSet setUnion(const vector<const RedisSet*>& sets)
+vector<string> setUnion(const vector<vector<string>>& sets)
 {
-    RedisSet result;
-    for (const RedisSet* set : sets)
+    unordered_set<string> result;
+    for (const vector<string>& set : sets)
     {
-        if (set != nullptr)
-        {
-            result.insert(set->begin(), set->end());
-        }
+        result.insert(set.begin(), set.end());
     }
 
-    return result;
+    return vector<string>(result.begin(), result.end());
 }
 
-RedisSet setDifference(const vector<const RedisSet*>& sets)
+vector<string> setDifference(const vector<vector<string>>& sets)
 {
-    RedisSet result;
     if (sets.empty())
     {
-        return result;
+        return {};
     }
 
-    if (sets.front() != nullptr)
-    {
-        result = *sets.front();
-    }
-
+    unordered_set<string> result(sets.front().begin(), sets.front().end());
     for (size_t i = 1; i < sets.size(); ++i)
     {
-        if (sets[i] == nullptr)
-        {
-            continue;
-        }
-
-        for (const string& member : *sets[i])
+        for (const string& member : sets[i])
         {
             result.erase(member);
         }
     }
 
-    return result;
+    return vector<string>(result.begin(), result.end());
 }
 
 string commandSAdd(const vector<string>& argv, Db& db)
@@ -223,22 +205,13 @@ string commandSAdd(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisSet* set = lookupSet(db, argv[1], true, type_error);
+    RedisObject* set = lookupSet(db, argv[1], true, type_error);
     if (type_error)
     {
         return wrongType();
     }
 
-    long long added = 0;
-    for (size_t i = 2; i < argv.size(); ++i)
-    {
-        if (set->insert(argv[i]).second)
-        {
-            ++added;
-        }
-    }
-
-    return encodeInteger(added);
+    return encodeInteger(setAdd(set, vector<string>(argv.begin() + 2, argv.end())));
 }
 
 string commandSRem(const vector<string>& argv, Db& db)
@@ -249,7 +222,7 @@ string commandSRem(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisSet* set = lookupSet(db, argv[1], false, type_error);
+    RedisObject* set = lookupSet(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
@@ -260,13 +233,7 @@ string commandSRem(const vector<string>& argv, Db& db)
         return encodeInteger(0);
     }
 
-    long long removed = 0;
-    for (size_t i = 2; i < argv.size(); ++i)
-    {
-        removed += static_cast<long long>(set->erase(argv[i]));
-    }
-
-    return encodeInteger(removed);
+    return encodeInteger(setRem(set, vector<string>(argv.begin() + 2, argv.end())));
 }
 
 string commandSMembers(const vector<string>& argv, const Db& db)
@@ -277,7 +244,7 @@ string commandSMembers(const vector<string>& argv, const Db& db)
     }
 
     bool type_error = false;
-    const RedisSet* set = getSet(db, argv[1], type_error);
+    const RedisObject* set = getSetObject(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
@@ -288,7 +255,7 @@ string commandSMembers(const vector<string>& argv, const Db& db)
         return encodeArray({});
     }
 
-    return encodeArray(setToVector(*set));
+    return encodeArray(setMembers(set));
 }
 
 string commandSCard(const vector<string>& argv, const Db& db)
@@ -299,7 +266,7 @@ string commandSCard(const vector<string>& argv, const Db& db)
     }
 
     bool type_error = false;
-    const RedisSet* set = getSet(db, argv[1], type_error);
+    const RedisObject* set = getSetObject(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
@@ -310,7 +277,7 @@ string commandSCard(const vector<string>& argv, const Db& db)
         return encodeInteger(0);
     }
 
-    return encodeInteger(static_cast<long long>(set->size()));
+    return encodeInteger(setCard(set));
 }
 
 string commandSIsMember(const vector<string>& argv, const Db& db)
@@ -321,7 +288,7 @@ string commandSIsMember(const vector<string>& argv, const Db& db)
     }
 
     bool type_error = false;
-    const RedisSet* set = getSet(db, argv[1], type_error);
+    const RedisObject* set = getSetObject(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
@@ -332,7 +299,7 @@ string commandSIsMember(const vector<string>& argv, const Db& db)
         return encodeInteger(0);
     }
 
-    return encodeInteger(set->count(argv[2]) > 0 ? 1 : 0);
+    return encodeInteger(setIsMember(set, argv[2]) ? 1 : 0);
 }
 
 string commandSMIsMember(const vector<string>& argv, const Db& db)
@@ -343,7 +310,7 @@ string commandSMIsMember(const vector<string>& argv, const Db& db)
     }
 
     bool type_error = false;
-    const RedisSet* set = getSet(db, argv[1], type_error);
+    const RedisObject* set = getSetObject(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
@@ -353,7 +320,7 @@ string commandSMIsMember(const vector<string>& argv, const Db& db)
     for (size_t i = 2; i < argv.size(); ++i)
     {
         long long present = 0;
-        if (set != nullptr && set->count(argv[i]) > 0)
+        if (set != nullptr && setIsMember(set, argv[i]))
         {
             present = 1;
         }
@@ -372,13 +339,13 @@ string commandSPop(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisSet* set = lookupSet(db, argv[1], false, type_error);
+    RedisObject* set = lookupSet(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
     }
 
-    if (set == nullptr || set->empty())
+    if (set == nullptr || setCard(set) == 0)
     {
         if (argv.size() == 3)
         {
@@ -398,11 +365,9 @@ string commandSPop(const vector<string>& argv, Db& db)
         }
     }
 
-    vector<string> popped = randomMembers(*set, count);
-    for (const string& member : popped)
-    {
-        set->erase(member);
-    }
+    const vector<string> members = setMembers(set);
+    const vector<string> popped = randomMembers(members, count);
+    setRem(set, popped);
 
     if (argv.size() == 2)
     {
@@ -420,24 +385,24 @@ string commandSRandMember(const vector<string>& argv, const Db& db)
     }
 
     bool type_error = false;
-    const RedisSet* set = getSet(db, argv[1], type_error);
+    const RedisObject* set = getSetObject(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
     }
 
-    if (set == nullptr || set->empty())
+    if (set == nullptr || setCard(set) == 0)
     {
         return encodeNullBulk();
     }
 
+    const vector<string> members = setMembers(set);
     if (argv.size() == 2)
     {
-        return encodeBulkString(randomMember(*set));
+        return encodeBulkString(randomMember(members));
     }
 
-    long long count = stoll(argv[2]);
-    return encodeArray(randomMembers(*set, count));
+    return encodeArray(randomMembers(members, stoll(argv[2])));
 }
 
 string commandSInter(const vector<string>& argv, const Db& db)
@@ -447,15 +412,14 @@ string commandSInter(const vector<string>& argv, const Db& db)
         return wrongArity(argv[0]);
     }
 
-    vector<const RedisSet*> sets;
+    vector<vector<string>> sets;
     string err;
-    vector<string> keys(argv.begin() + 1, argv.end());
-    if (!collectSets(db, keys, sets, err))
+    if (!collectSetMembers(db, vector<string>(argv.begin() + 1, argv.end()), sets, err))
     {
         return err;
     }
 
-    return encodeArray(setToVector(setIntersection(sets)));
+    return encodeArray(setIntersection(sets));
 }
 
 string commandSUnion(const vector<string>& argv, const Db& db)
@@ -465,15 +429,14 @@ string commandSUnion(const vector<string>& argv, const Db& db)
         return wrongArity(argv[0]);
     }
 
-    vector<const RedisSet*> sets;
+    vector<vector<string>> sets;
     string err;
-    vector<string> keys(argv.begin() + 1, argv.end());
-    if (!collectSets(db, keys, sets, err))
+    if (!collectSetMembers(db, vector<string>(argv.begin() + 1, argv.end()), sets, err))
     {
         return err;
     }
 
-    return encodeArray(setToVector(setUnion(sets)));
+    return encodeArray(setUnion(sets));
 }
 
 string commandSDiff(const vector<string>& argv, const Db& db)
@@ -483,33 +446,31 @@ string commandSDiff(const vector<string>& argv, const Db& db)
         return wrongArity(argv[0]);
     }
 
-    vector<const RedisSet*> sets;
+    vector<vector<string>> sets;
     string err;
-    vector<string> keys(argv.begin() + 1, argv.end());
-    if (!collectSets(db, keys, sets, err))
+    if (!collectSetMembers(db, vector<string>(argv.begin() + 1, argv.end()), sets, err))
     {
         return err;
     }
 
-    return encodeArray(setToVector(setDifference(sets)));
+    return encodeArray(setDifference(sets));
 }
 
-string commandStoreOp(const vector<string>& argv, Db& db, RedisSet (*op)(const vector<const RedisSet*>&))
+string commandStoreOp(const vector<string>& argv, Db& db, vector<string> (*op)(const vector<vector<string>>&))
 {
     if (argv.size() < 3)
     {
         return wrongArity(argv[0]);
     }
 
-    vector<const RedisSet*> sets;
+    vector<vector<string>> sets;
     string err;
-    vector<string> keys(argv.begin() + 2, argv.end());
-    if (!collectSets(db, keys, sets, err))
+    if (!collectSetMembers(db, vector<string>(argv.begin() + 2, argv.end()), sets, err))
     {
         return err;
     }
 
-    RedisSet result = op(sets);
+    const vector<string> result = op(sets);
     storeSetMembers(db, argv[1], result);
     return encodeInteger(static_cast<long long>(result.size()));
 }

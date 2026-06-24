@@ -1,13 +1,12 @@
 #include "cmd_hash.h"
 
+#include "encoding.h"
 #include "resp.h"
 
 using namespace std;
 
 namespace
 {
-using HashMap = unordered_map<string, string>;
-
 string wrongArity(const string& command)
 {
     return encodeError("ERR wrong number of arguments for '" + command + "' command");
@@ -23,7 +22,7 @@ string notAnInteger()
     return encodeError("ERR hash value is not an integer");
 }
 
-HashMap* lookupHash(Db& db, const string& key, bool create, bool& type_error)
+RedisObject* lookupHash(Db& db, const string& key, bool create, bool& type_error)
 {
     type_error = false;
     auto it = db.find(key);
@@ -37,7 +36,7 @@ HashMap* lookupHash(Db& db, const string& key, bool create, bool& type_error)
 
         RedisObject* obj = createHashObject();
         db[key] = obj;
-        return static_cast<HashMap*>(obj->ptr);
+        return obj;
     }
 
     if (it->second->type != OBJ_HASH)
@@ -46,7 +45,7 @@ HashMap* lookupHash(Db& db, const string& key, bool create, bool& type_error)
         return nullptr;
     }
 
-    return static_cast<HashMap*>(it->second->ptr);
+    return it->second;
 }
 
 string commandHSet(const vector<string>& argv, Db& db)
@@ -57,7 +56,7 @@ string commandHSet(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    HashMap* hash = lookupHash(db, argv[1], true, type_error);
+    RedisObject* hash = lookupHash(db, argv[1], true, type_error);
     if (type_error)
     {
         return wrongType();
@@ -66,12 +65,12 @@ string commandHSet(const vector<string>& argv, Db& db)
     long long added = 0;
     for (size_t i = 2; i < argv.size(); i += 2)
     {
-        if (hash->find(argv[i]) == hash->end())
+        bool field_added = false;
+        hashSet(hash, argv[i], argv[i + 1], field_added);
+        if (field_added)
         {
             ++added;
         }
-
-        (*hash)[argv[i]] = argv[i + 1];
     }
 
     return encodeInteger(added);
@@ -95,14 +94,13 @@ string commandHGet(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const HashMap* hash = static_cast<const HashMap*>(it->second->ptr);
-    auto field = hash->find(argv[2]);
-    if (field == hash->end())
+    string value;
+    if (!hashGet(it->second, argv[2], value))
     {
         return encodeNullBulk();
     }
 
-    return encodeBulkString(field->second);
+    return encodeBulkString(value);
 }
 
 string commandHMGet(const vector<string>& argv, const Db& db)
@@ -128,19 +126,17 @@ string commandHMGet(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const HashMap* hash = static_cast<const HashMap*>(it->second->ptr);
     string reply = "*" + to_string(argv.size() - 2) + "\r\n";
-
     for (size_t i = 2; i < argv.size(); ++i)
     {
-        auto field = hash->find(argv[i]);
-        if (field == hash->end())
+        string value;
+        if (hashGet(it->second, argv[i], value))
         {
-            reply += encodeNullBulk();
+            reply += encodeBulkString(value);
         }
         else
         {
-            reply += encodeBulkString(field->second);
+            reply += encodeNullBulk();
         }
     }
 
@@ -155,7 +151,7 @@ string commandHDel(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    HashMap* hash = lookupHash(db, argv[1], false, type_error);
+    RedisObject* hash = lookupHash(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
@@ -166,16 +162,7 @@ string commandHDel(const vector<string>& argv, Db& db)
         return encodeInteger(0);
     }
 
-    long long removed = 0;
-    for (size_t i = 2; i < argv.size(); ++i)
-    {
-        if (hash->erase(argv[i]) > 0)
-        {
-            ++removed;
-        }
-    }
-
-    return encodeInteger(removed);
+    return encodeInteger(hashDel(hash, vector<string>(argv.begin() + 2, argv.end())));
 }
 
 string commandHExists(const vector<string>& argv, const Db& db)
@@ -186,18 +173,17 @@ string commandHExists(const vector<string>& argv, const Db& db)
     }
 
     auto it = db.find(argv[1]);
-    if (it == db.end() || it->second->type != OBJ_HASH)
+    if (it == db.end())
     {
-        if (it != db.end())
-        {
-            return wrongType();
-        }
-
         return encodeInteger(0);
     }
 
-    const HashMap* hash = static_cast<const HashMap*>(it->second->ptr);
-    return encodeInteger(hash->find(argv[2]) != hash->end() ? 1 : 0);
+    if (it->second->type != OBJ_HASH)
+    {
+        return wrongType();
+    }
+
+    return encodeInteger(hashExists(it->second, argv[2]) ? 1 : 0);
 }
 
 string commandHLen(const vector<string>& argv, const Db& db)
@@ -218,8 +204,7 @@ string commandHLen(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const HashMap* hash = static_cast<const HashMap*>(it->second->ptr);
-    return encodeInteger(static_cast<long long>(hash->size()));
+    return encodeInteger(hashLen(it->second));
 }
 
 string commandHKeys(const vector<string>& argv, const Db& db)
@@ -240,15 +225,7 @@ string commandHKeys(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const HashMap* hash = static_cast<const HashMap*>(it->second->ptr);
-    vector<string> keys;
-    keys.reserve(hash->size());
-    for (const auto& entry : *hash)
-    {
-        keys.push_back(entry.first);
-    }
-
-    return encodeArray(keys);
+    return encodeArray(hashKeys(it->second));
 }
 
 string commandHVals(const vector<string>& argv, const Db& db)
@@ -269,15 +246,7 @@ string commandHVals(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const HashMap* hash = static_cast<const HashMap*>(it->second->ptr);
-    vector<string> values;
-    values.reserve(hash->size());
-    for (const auto& entry : *hash)
-    {
-        values.push_back(entry.second);
-    }
-
-    return encodeArray(values);
+    return encodeArray(hashVals(it->second));
 }
 
 string commandHGetAll(const vector<string>& argv, const Db& db)
@@ -298,16 +267,7 @@ string commandHGetAll(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const HashMap* hash = static_cast<const HashMap*>(it->second->ptr);
-    vector<string> flat;
-    flat.reserve(hash->size() * 2);
-    for (const auto& entry : *hash)
-    {
-        flat.push_back(entry.first);
-        flat.push_back(entry.second);
-    }
-
-    return encodeArray(flat);
+    return encodeArray(hashGetAllFlat(it->second));
 }
 
 string commandHIncrBy(const vector<string>& argv, Db& db)
@@ -318,27 +278,19 @@ string commandHIncrBy(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    HashMap* hash = lookupHash(db, argv[1], true, type_error);
+    RedisObject* hash = lookupHash(db, argv[1], true, type_error);
     if (type_error)
     {
         return wrongType();
     }
 
-    const string& field = argv[2];
     long long delta = stoll(argv[3]);
-    auto it = hash->find(field);
-
-    long long current = 0;
-    if (it != hash->end())
+    long long next = 0;
+    if (!hashIncrBy(hash, argv[2], delta, next))
     {
-        if (!tryParseInteger(it->second, current))
-        {
-            return notAnInteger();
-        }
+        return notAnInteger();
     }
 
-    long long next = current + delta;
-    (*hash)[field] = to_string(next);
     return encodeInteger(next);
 }
 }

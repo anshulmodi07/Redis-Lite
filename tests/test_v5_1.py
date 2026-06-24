@@ -11,6 +11,8 @@ PROBE_SOURCES = [
     ROOT / "resp.cpp",
     ROOT / "sds.cpp",
     ROOT / "listpack.cpp",
+    ROOT / "intset.cpp",
+    ROOT / "encoding.cpp",
     ROOT / "object.cpp",
     ROOT / "cmd_string.cpp",
     ROOT / "cmd_expire.cpp",

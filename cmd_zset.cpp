@@ -1,7 +1,7 @@
 #include "cmd_zset.h"
 
+#include "encoding.h"
 #include "resp.h"
-#include "skiplist.h"
 
 #include <algorithm>
 #include <cctype>
@@ -80,7 +80,7 @@ bool parseLong(const string& value, long long& out)
     }
 }
 
-ZSet* lookupZSet(Db& db, const string& key, bool create, bool& type_error)
+RedisObject* lookupZSet(Db& db, const string& key, bool create, bool& type_error)
 {
     type_error = false;
     auto it = db.find(key);
@@ -92,17 +92,17 @@ ZSet* lookupZSet(Db& db, const string& key, bool create, bool& type_error)
         }
         RedisObject* obj = createZSetObject();
         db[key] = obj;
-        return static_cast<ZSet*>(obj->ptr);
+        return obj;
     }
     if (it->second->type != OBJ_ZSET)
     {
         type_error = true;
         return nullptr;
     }
-    return static_cast<ZSet*>(it->second->ptr);
+    return it->second;
 }
 
-const ZSet* getZSet(const Db& db, const string& key, bool& type_error)
+const RedisObject* getZSet(const Db& db, const string& key, bool& type_error)
 {
     type_error = false;
     auto it = db.find(key);
@@ -115,7 +115,7 @@ const ZSet* getZSet(const Db& db, const string& key, bool& type_error)
         type_error = true;
         return nullptr;
     }
-    return static_cast<const ZSet*>(it->second->ptr);
+    return it->second;
 }
 
 string encodeEntries(const vector<ZSetEntry>& entries, bool with_scores)
@@ -159,13 +159,13 @@ string commandZAdd(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    ZSet* zset = lookupZSet(db, argv[1], true, type_error);
+    RedisObject* zset = lookupZSet(db, argv[1], true, type_error);
     if (type_error)
     {
         return wrongType();
     }
 
-    long long added = 0, changed = 0;
+    vector<pair<double, string>> entries;
     for (; pos < argv.size(); pos += 2)
     {
         double score = 0;
@@ -174,31 +174,13 @@ string commandZAdd(const vector<string>& argv, Db& db)
             return encodeError("ERR value is not a valid float");
         }
 
-        const string& member = argv[pos + 1];
-        auto old = zset->scores.find(member);
-        bool exists = old != zset->scores.end();
-        if ((nx && exists) || (xx && !exists))
-        {
-            continue;
-        }
-        if (exists && ((gt && score <= old->second) || (lt && score >= old->second)))
-        {
-            continue;
-        }
-
-        if (!exists)
-        {
-            ++added;
-        }
-        if (!exists || old->second != score)
-        {
-            ++changed;
-        }
-        zset->scores[member] = score;
-        zset->index.insert(score, member);
+        entries.emplace_back(score, argv[pos + 1]);
     }
 
-    return encodeInteger(ch ? changed : added);
+    long long added = 0;
+    long long changed = 0;
+    const long long result = zsetAdd(zset, entries, nx, xx, gt, lt, ch, added, changed);
+    return encodeInteger(result);
 }
 
 string commandZRange(const vector<string>& argv, const Db& db, bool force_reverse)
@@ -228,7 +210,7 @@ string commandZRange(const vector<string>& argv, const Db& db, bool force_revers
     }
 
     bool type_error = false;
-    const ZSet* zset = getZSet(db, argv[1], type_error);
+    const RedisObject* zset = getZSet(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
@@ -249,7 +231,7 @@ string commandZRange(const vector<string>& argv, const Db& db, bool force_revers
         {
             swap(min, max);
         }
-        return encodeEntries(zset->index.rangeByScore(min, max, reverse, offset, count), with_scores);
+        return encodeEntries(zsetRangeByScore(zset, min, max, reverse, offset, count), with_scores);
     }
 
     long long start = 0, stop = 0;
@@ -257,7 +239,7 @@ string commandZRange(const vector<string>& argv, const Db& db, bool force_revers
     {
         return encodeError("ERR value is out of range, or is not an integer");
     }
-    return encodeEntries(zset->index.rangeByRank(start, stop, reverse), with_scores);
+    return encodeEntries(zsetRangeByRank(zset, start, stop, reverse), with_scores);
 }
 
 string commandZRank(const vector<string>& argv, const Db& db, bool reverse)
@@ -267,7 +249,7 @@ string commandZRank(const vector<string>& argv, const Db& db, bool reverse)
         return wrongArity(argv[0]);
     }
     bool type_error = false;
-    const ZSet* zset = getZSet(db, argv[1], type_error);
+    const RedisObject* zset = getZSet(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
@@ -276,8 +258,10 @@ string commandZRank(const vector<string>& argv, const Db& db, bool reverse)
     {
         return encodeNullBulk();
     }
-    long long rank = zset->index.rank(argv[2], reverse);
-    return rank < 0 ? encodeNullBulk() : encodeInteger(rank);
+
+    bool found = false;
+    const long long rank = zsetRank(zset, argv[2], reverse, found);
+    return found ? encodeInteger(rank) : encodeNullBulk();
 }
 
 string commandZScore(const vector<string>& argv, const Db& db)
@@ -287,13 +271,13 @@ string commandZScore(const vector<string>& argv, const Db& db)
         return wrongArity(argv[0]);
     }
     bool type_error = false;
-    const ZSet* zset = getZSet(db, argv[1], type_error);
+    const RedisObject* zset = getZSet(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
     }
     double score = 0;
-    if (zset == nullptr || !zset->index.score(argv[2], score))
+    if (zset == nullptr || !zsetScore(zset, argv[2], score))
     {
         return encodeNullBulk();
     }
@@ -307,12 +291,12 @@ string commandZCard(const vector<string>& argv, const Db& db)
         return wrongArity(argv[0]);
     }
     bool type_error = false;
-    const ZSet* zset = getZSet(db, argv[1], type_error);
+    const RedisObject* zset = getZSet(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
     }
-    return encodeInteger(zset == nullptr ? 0 : static_cast<long long>(zset->scores.size()));
+    return encodeInteger(zset == nullptr ? 0 : zsetCard(zset));
 }
 
 string commandZCount(const vector<string>& argv, const Db& db)
@@ -327,12 +311,12 @@ string commandZCount(const vector<string>& argv, const Db& db)
         return encodeError("ERR min or max is not a float");
     }
     bool type_error = false;
-    const ZSet* zset = getZSet(db, argv[1], type_error);
+    const RedisObject* zset = getZSet(db, argv[1], type_error);
     if (type_error)
     {
         return wrongType();
     }
-    return encodeInteger(zset == nullptr ? 0 : static_cast<long long>(zset->index.countByScore(min, max)));
+    return encodeInteger(zset == nullptr ? 0 : zsetCount(zset, min, max));
 }
 
 string commandZRem(const vector<string>& argv, Db& db)
@@ -342,24 +326,17 @@ string commandZRem(const vector<string>& argv, Db& db)
         return wrongArity(argv[0]);
     }
     bool type_error = false;
-    ZSet* zset = lookupZSet(db, argv[1], false, type_error);
+    RedisObject* zset = lookupZSet(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
     }
-    long long removed = 0;
-    if (zset != nullptr)
+    if (zset == nullptr)
     {
-        for (size_t i = 2; i < argv.size(); ++i)
-        {
-            if (zset->index.remove(argv[i]))
-            {
-                zset->scores.erase(argv[i]);
-                ++removed;
-            }
-        }
+        return encodeInteger(0);
     }
-    return encodeInteger(removed);
+
+    return encodeInteger(zsetRem(zset, vector<string>(argv.begin() + 2, argv.end())));
 }
 
 string commandZIncrBy(const vector<string>& argv, Db& db)
@@ -374,20 +351,18 @@ string commandZIncrBy(const vector<string>& argv, Db& db)
         return encodeError("ERR value is not a valid float");
     }
     bool type_error = false;
-    ZSet* zset = lookupZSet(db, argv[1], true, type_error);
+    RedisObject* zset = lookupZSet(db, argv[1], true, type_error);
     if (type_error)
     {
         return wrongType();
     }
-    double old = 0;
-    zset->index.score(argv[3], old);
-    double next = old + inc;
+
+    const double next = zsetIncrBy(zset, argv[3], inc);
     if (isnan(next) || isinf(next))
     {
         return encodeError("ERR increment would produce NaN or Infinity");
     }
-    zset->scores[argv[3]] = next;
-    zset->index.insert(next, argv[3]);
+
     return encodeBulkString(scoreString(next));
 }
 
@@ -403,7 +378,7 @@ string commandZPop(const vector<string>& argv, Db& db, bool max_side)
         return encodeError("ERR value is out of range, or is not an integer");
     }
     bool type_error = false;
-    ZSet* zset = lookupZSet(db, argv[1], false, type_error);
+    RedisObject* zset = lookupZSet(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
@@ -412,13 +387,8 @@ string commandZPop(const vector<string>& argv, Db& db, bool max_side)
     {
         return encodeArray({});
     }
-    vector<ZSetEntry> entries = zset->index.rangeByRank(0, count - 1, max_side);
-    for (const auto& entry : entries)
-    {
-        zset->index.remove(entry.member);
-        zset->scores.erase(entry.member);
-    }
-    return encodeEntries(entries, true);
+
+    return encodeEntries(zsetPop(zset, count, max_side), true);
 }
 }
 

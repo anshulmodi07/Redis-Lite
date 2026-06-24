@@ -1,15 +1,12 @@
 #include "cmd_list.h"
 
+#include "encoding.h"
 #include "resp.h"
-
-#include <list>
 
 using namespace std;
 
 namespace
 {
-using RedisList = list<string>;
-
 string wrongArity(const string& command)
 {
     return encodeError("ERR wrong number of arguments for '" + command + "' command");
@@ -35,7 +32,7 @@ bool indexInRange(long long index, long long size)
     return index >= 0 && index < size;
 }
 
-RedisList* lookupList(Db& db, const string& key, bool create, bool& type_error)
+RedisObject* lookupList(Db& db, const string& key, bool create, bool& type_error)
 {
     type_error = false;
     auto it = db.find(key);
@@ -49,7 +46,7 @@ RedisList* lookupList(Db& db, const string& key, bool create, bool& type_error)
 
         RedisObject* obj = createListObject();
         db[key] = obj;
-        return static_cast<RedisList*>(obj->ptr);
+        return obj;
     }
 
     if (it->second->type != OBJ_LIST)
@@ -58,18 +55,7 @@ RedisList* lookupList(Db& db, const string& key, bool create, bool& type_error)
         return nullptr;
     }
 
-    return static_cast<RedisList*>(it->second->ptr);
-}
-
-list<string>::iterator listAt(RedisList& list, long long index)
-{
-    auto it = list.begin();
-    for (long long i = 0; i < index; ++i)
-    {
-        ++it;
-    }
-
-    return it;
+    return it->second;
 }
 
 string commandLPush(const vector<string>& argv, Db& db)
@@ -80,18 +66,14 @@ string commandLPush(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisList* list = lookupList(db, argv[1], true, type_error);
+    RedisObject* list = lookupList(db, argv[1], true, type_error);
     if (type_error)
     {
         return wrongType();
     }
 
-    for (size_t i = 2; i < argv.size(); ++i)
-    {
-        list->push_front(argv[i]);
-    }
-
-    return encodeInteger(static_cast<long long>(list->size()));
+    listPushFront(list, vector<string>(argv.begin() + 2, argv.end()));
+    return encodeInteger(listLen(list));
 }
 
 string commandRPush(const vector<string>& argv, Db& db)
@@ -102,50 +84,29 @@ string commandRPush(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisList* list = lookupList(db, argv[1], true, type_error);
+    RedisObject* list = lookupList(db, argv[1], true, type_error);
     if (type_error)
     {
         return wrongType();
     }
 
-    for (size_t i = 2; i < argv.size(); ++i)
-    {
-        list->push_back(argv[i]);
-    }
-
-    return encodeInteger(static_cast<long long>(list->size()));
+    listPushBack(list, vector<string>(argv.begin() + 2, argv.end()));
+    return encodeInteger(listLen(list));
 }
 
-string popElements(RedisList* list, bool from_head, long long count)
+string popReply(const vector<string>& popped, bool multi)
 {
-    vector<string> popped;
-    popped.reserve(static_cast<size_t>(count));
-
-    for (long long i = 0; i < count && !list->empty(); ++i)
+    if (multi)
     {
-        if (from_head)
-        {
-            popped.push_back(list->front());
-            list->pop_front();
-        }
-        else
-        {
-            popped.push_back(list->back());
-            list->pop_back();
-        }
+        return encodeArray(popped);
     }
 
-    if (count == 1)
+    if (popped.empty())
     {
-        if (popped.empty())
-        {
-            return encodeNullBulk();
-        }
-
-        return encodeBulkString(popped.front());
+        return encodeNullBulk();
     }
 
-    return encodeArray(popped);
+    return encodeBulkString(popped.front());
 }
 
 string commandLPop(const vector<string>& argv, Db& db)
@@ -156,7 +117,7 @@ string commandLPop(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisList* list = lookupList(db, argv[1], false, type_error);
+    RedisObject* list = lookupList(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
@@ -172,17 +133,12 @@ string commandLPop(const vector<string>& argv, Db& db)
         }
     }
 
-    if (list == nullptr || list->empty())
+    if (list == nullptr || listLen(list) == 0)
     {
-        if (argv.size() == 3)
-        {
-            return encodeArray({});
-        }
-
-        return encodeNullBulk();
+        return popReply({}, argv.size() == 3);
     }
 
-    return popElements(list, true, count);
+    return popReply(listPop(list, true, count), argv.size() == 3);
 }
 
 string commandRPop(const vector<string>& argv, Db& db)
@@ -193,7 +149,7 @@ string commandRPop(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisList* list = lookupList(db, argv[1], false, type_error);
+    RedisObject* list = lookupList(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
@@ -209,17 +165,12 @@ string commandRPop(const vector<string>& argv, Db& db)
         }
     }
 
-    if (list == nullptr || list->empty())
+    if (list == nullptr || listLen(list) == 0)
     {
-        if (argv.size() == 3)
-        {
-            return encodeArray({});
-        }
-
-        return encodeNullBulk();
+        return popReply({}, argv.size() == 3);
     }
 
-    return popElements(list, false, count);
+    return popReply(listPop(list, false, count), argv.size() == 3);
 }
 
 string commandLLen(const vector<string>& argv, const Db& db)
@@ -240,8 +191,7 @@ string commandLLen(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const RedisList* list = static_cast<const RedisList*>(it->second->ptr);
-    return encodeInteger(static_cast<long long>(list->size()));
+    return encodeInteger(listLen(it->second));
 }
 
 string commandLRange(const vector<string>& argv, const Db& db)
@@ -262,44 +212,7 @@ string commandLRange(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const RedisList* list = static_cast<const RedisList*>(it->second->ptr);
-    long long size = static_cast<long long>(list->size());
-    if (size == 0)
-    {
-        return encodeArray({});
-    }
-
-    long long start = normalizeIndex(stoll(argv[2]), size);
-    long long stop = normalizeIndex(stoll(argv[3]), size);
-
-    if (start < 0)
-    {
-        start = 0;
-    }
-
-    if (stop >= size)
-    {
-        stop = size - 1;
-    }
-
-    if (start > stop)
-    {
-        return encodeArray({});
-    }
-
-    vector<string> slice;
-    long long index = 0;
-    for (const string& value : *list)
-    {
-        if (index >= start && index <= stop)
-        {
-            slice.push_back(value);
-        }
-
-        ++index;
-    }
-
-    return encodeArray(slice);
+    return encodeArray(listRange(it->second, stoll(argv[2]), stoll(argv[3])));
 }
 
 string commandLIndex(const vector<string>& argv, const Db& db)
@@ -320,27 +233,13 @@ string commandLIndex(const vector<string>& argv, const Db& db)
         return wrongType();
     }
 
-    const RedisList* list = static_cast<const RedisList*>(it->second->ptr);
-    long long size = static_cast<long long>(list->size());
-    long long index = normalizeIndex(stoll(argv[2]), size);
-
-    if (!indexInRange(index, size))
+    string value;
+    if (!listIndex(it->second, stoll(argv[2]), value))
     {
         return encodeNullBulk();
     }
 
-    long long pos = 0;
-    for (const string& value : *list)
-    {
-        if (pos == index)
-        {
-            return encodeBulkString(value);
-        }
-
-        ++pos;
-    }
-
-    return encodeNullBulk();
+    return encodeBulkString(value);
 }
 
 string commandLSet(const vector<string>& argv, Db& db)
@@ -351,7 +250,7 @@ string commandLSet(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisList* list = lookupList(db, argv[1], false, type_error);
+    RedisObject* list = lookupList(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
@@ -362,15 +261,18 @@ string commandLSet(const vector<string>& argv, Db& db)
         return encodeError("ERR no such key");
     }
 
-    long long size = static_cast<long long>(list->size());
-    long long index = normalizeIndex(stoll(argv[2]), size);
-
+    const long long size = listLen(list);
+    const long long index = normalizeIndex(stoll(argv[2]), size);
     if (!indexInRange(index, size))
     {
         return encodeError("ERR index out of range");
     }
 
-    *listAt(*list, index) = argv[3];
+    if (!listSet(list, index, argv[3]))
+    {
+        return encodeError("ERR index out of range");
+    }
+
     return encodeOK();
 }
 
@@ -388,7 +290,7 @@ string commandLInsert(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisList* list = lookupList(db, argv[1], false, type_error);
+    RedisObject* list = lookupList(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
@@ -399,26 +301,7 @@ string commandLInsert(const vector<string>& argv, Db& db)
         return encodeInteger(0);
     }
 
-    for (auto it = list->begin(); it != list->end(); ++it)
-    {
-        if (*it != argv[3])
-        {
-            continue;
-        }
-
-        if (where == "BEFORE")
-        {
-            list->insert(it, argv[4]);
-        }
-        else
-        {
-            list->insert(next(it), argv[4]);
-        }
-
-        return encodeInteger(static_cast<long long>(list->size()));
-    }
-
-    return encodeInteger(0);
+    return encodeInteger(listInsert(list, where == "BEFORE", argv[3], argv[4]));
 }
 
 string commandLRem(const vector<string>& argv, Db& db)
@@ -429,7 +312,7 @@ string commandLRem(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisList* list = lookupList(db, argv[1], false, type_error);
+    RedisObject* list = lookupList(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
@@ -440,65 +323,7 @@ string commandLRem(const vector<string>& argv, Db& db)
         return encodeInteger(0);
     }
 
-    long long count = stoll(argv[2]);
-    const string& value = argv[3];
-    long long removed = 0;
-
-    if (count == 0)
-    {
-        for (auto it = list->begin(); it != list->end();)
-        {
-            if (*it == value)
-            {
-                it = list->erase(it);
-                ++removed;
-            }
-            else
-            {
-                ++it;
-            }
-        }
-
-        return encodeInteger(removed);
-    }
-
-    if (count > 0)
-    {
-        for (auto it = list->begin(); it != list->end() && count > 0;)
-        {
-            if (*it == value)
-            {
-                it = list->erase(it);
-                ++removed;
-                --count;
-            }
-            else
-            {
-                ++it;
-            }
-        }
-    }
-    else
-    {
-        long long abs_count = -count;
-        for (long long i = static_cast<long long>(list->size()) - 1; i >= 0 && abs_count > 0; --i)
-        {
-            auto it = list->begin();
-            for (long long pos = 0; pos < i; ++pos)
-            {
-                ++it;
-            }
-
-            if (*it == value)
-            {
-                list->erase(it);
-                ++removed;
-                --abs_count;
-            }
-        }
-    }
-
-    return encodeInteger(removed);
+    return encodeInteger(listRem(list, stoll(argv[2]), argv[3]));
 }
 
 string commandLTrim(const vector<string>& argv, Db& db)
@@ -509,50 +334,17 @@ string commandLTrim(const vector<string>& argv, Db& db)
     }
 
     bool type_error = false;
-    RedisList* list = lookupList(db, argv[1], false, type_error);
+    RedisObject* list = lookupList(db, argv[1], false, type_error);
     if (type_error)
     {
         return wrongType();
     }
 
-    if (list == nullptr || list->empty())
+    if (list != nullptr)
     {
-        return encodeOK();
+        listTrim(list, stoll(argv[2]), stoll(argv[3]));
     }
 
-    long long size = static_cast<long long>(list->size());
-    long long start = normalizeIndex(stoll(argv[2]), size);
-    long long stop = normalizeIndex(stoll(argv[3]), size);
-
-    if (start < 0)
-    {
-        start = 0;
-    }
-
-    if (stop >= size)
-    {
-        stop = size - 1;
-    }
-
-    if (start > stop)
-    {
-        list->clear();
-        return encodeOK();
-    }
-
-    RedisList trimmed;
-    long long index = 0;
-    for (const string& value : *list)
-    {
-        if (index >= start && index <= stop)
-        {
-            trimmed.push_back(value);
-        }
-
-        ++index;
-    }
-
-    *list = std::move(trimmed);
     return encodeOK();
 }
 }
