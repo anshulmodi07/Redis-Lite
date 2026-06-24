@@ -9,6 +9,7 @@
 #include "encoding.h"
 #include "aof.h"
 #include "eviction.h"
+#include "pubsub.h"
 #include "rdb.h"
 #include "object.h"
 #include "rdb.h"
@@ -595,6 +596,7 @@ void initCommandTable()
     registerListCommands(table);
     registerSetCommands(table);
     registerZSetCommands(table);
+    registerPubsubCommands(table);
 }
 
 const CommandTable& commandTable()
@@ -607,6 +609,11 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
     if (argv.empty())
     {
         return encodeError("ERR unknown command");
+    }
+
+    if (ctx.client.pubsub_mode && !pubsubAllowsInMode(argv[0]))
+    {
+        return encodeError("ERR only (P)SUBSCRIBE / (P)UNSUBSCRIBE / PING allowed in subscribed state");
     }
 
     auto it = table.find(argv[0]);

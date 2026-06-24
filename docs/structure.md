@@ -1,16 +1,16 @@
 # Project Structure
 
-Current version: V8.3
+Current version: V9.0
 
 ```text
-|-- aof.h / aof.cpp       # AOF log, appendfsync policies, BGREWRITEAOF compaction
-|-- rdb.h / rdb.cpp       # RDB + BGSAVE (excludes concurrent rewrite)
-|-- commands.cpp          # CONFIG appendfsync, BGREWRITEAOF
-`-- tests/test_v8_3.py
+|-- pubsub.h / pubsub.cpp   # SUBSCRIBE/PUBLISH/PSUBSCRIBE/PUBSUB
+|-- client.h                # pubsub_mode flag
+|-- eventloop.cpp           # client map passed to dispatch; cleanup on disconnect
+`-- tests/test_v9_0.py
 ```
 
 ## File Responsibilities
 
-- `aof.cpp` — `g_aof_fsync_policy`; `always` fsyncs per write; `everysec` in `aofPeriodic`; `writeCompactAof` + `fork` for rewrite.
-- `commands.cpp` — `CONFIG GET/SET appendfsync`; `BGREWRITEAOF` returns `+Background append only file rewriting started`.
-- `eventloop.cpp` — `checkBgrewriteChild()` reopens AOF after successful rewrite.
+- `pubsub.cpp` — channel/pattern maps; push messages to subscriber `write_buf`.
+- `commands.cpp` — blocks non-pubsub commands when `client.pubsub_mode`.
+- `eventloop.cpp` — `clientWritePending()` for publish-side `EPOLLOUT`.

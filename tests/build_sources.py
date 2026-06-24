@@ -22,6 +22,7 @@ CORE_SOURCES = [
     ROOT / "eviction.cpp",
     ROOT / "rdb.cpp",
     ROOT / "aof.cpp",
+    ROOT / "pubsub.cpp",
 ]
 
 SERVER_SOURCES = CORE_SOURCES + [

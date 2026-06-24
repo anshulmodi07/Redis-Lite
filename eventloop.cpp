@@ -5,6 +5,7 @@
 #include "db.h"
 #include "parser.h"
 #include "aof.h"
+#include "pubsub.h"
 #include "rdb.h"
 #include "resp.h"
 
@@ -68,6 +69,7 @@ bool updateClientEvents(int epoll_fd, const Client& client)
 
 void closeClient(int epoll_fd, unordered_map<int, Client>& clients, int fd)
 {
+    pubsubCleanup(fd);
     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
     close(fd);
     clients.erase(fd);
@@ -118,17 +120,17 @@ void acceptReadyClients(
     }
 }
 
-void queueParsedReplies(Client& client)
+void queueParsedReplies(Client& client, unordered_map<int, Client>& clients, int epoll_fd)
 {
     vector<string> argv;
 
     while (client.parser.tryParse(argv))
     {
-        client.write_buf += dispatch(client, databases, argv);
+        client.write_buf += dispatch(client, databases, argv, &clients, epoll_fd);
     }
 }
 
-bool readClient(Client& client)
+bool readClient(Client& client, unordered_map<int, Client>& clients, int epoll_fd)
 {
     char buffer[BUFFER_SIZE];
 
@@ -148,7 +150,7 @@ bool readClient(Client& client)
 
             try
             {
-                queueParsedReplies(client);
+                queueParsedReplies(client, clients, epoll_fd);
             }
             catch (const invalid_argument& err)
             {
@@ -201,6 +203,19 @@ bool flushClient(Client& client)
 
     return !client.closing;
 }
+}
+
+void clientWritePending(int epoll_fd, Client& client)
+{
+    epoll_event event;
+    event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+    if (!client.write_buf.empty())
+    {
+        event.events |= EPOLLOUT;
+    }
+
+    event.data.fd = client.fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_MOD, client.fd, &event);
 }
 
 int runEventLoop(int server_fd)
@@ -302,7 +317,7 @@ int runEventLoop(int server_fd)
 
             if (keep_open && (fired & EPOLLIN))
             {
-                keep_open = readClient(client);
+                keep_open = readClient(client, clients, epoll_fd);
             }
 
             if (keep_open && (fired & EPOLLOUT))

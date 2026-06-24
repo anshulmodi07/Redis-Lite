@@ -169,7 +169,8 @@ vector<string> tokenize(const string& line)
     return argv;
 }
 
-string dispatch(Client& client, vector<RedisDb>& databases, const vector<string>& argv)
+string dispatch(Client& client, vector<RedisDb>& databases, const vector<string>& argv,
+    unordered_map<int, Client>* clients, int epoll_fd)
 {
     vector<string> normalized = argv;
     if (!normalized.empty())
@@ -177,7 +178,7 @@ string dispatch(Client& client, vector<RedisDb>& databases, const vector<string>
         normalized[0] = uppercase(normalized[0]);
     }
 
-    CommandContext ctx{client, databases};
+    CommandContext ctx{client, databases, clients, epoll_fd};
     set<size_t> seen;
     for (size_t pos : keyPositions(normalized))
     {
