@@ -4,6 +4,7 @@
 #include "commands.h"
 #include "db.h"
 #include "parser.h"
+#include "aof.h"
 #include "rdb.h"
 #include "resp.h"
 
@@ -205,8 +206,16 @@ bool flushClient(Client& client)
 int runEventLoop(int server_fd)
 {
     initCommandTable();
+    aofInit();
 
-    if (ifstream(g_rdb_filename).good() && !loadRDB(g_rdb_filename, databases))
+    if (ifstream(g_aof_filename).good())
+    {
+        if (!aofLoad(databases))
+        {
+            cout << "Failed to load AOF file: " << g_aof_filename << "\n";
+        }
+    }
+    else if (ifstream(g_rdb_filename).good() && !loadRDB(g_rdb_filename, databases))
     {
         cout << "Failed to load RDB file: " << g_rdb_filename << "\n";
     }
@@ -259,6 +268,8 @@ int runEventLoop(int server_fd)
         }
 
         checkBgsaveChild();
+        checkBgrewriteChild();
+        aofPeriodic(EPOLL_WAIT_TIMEOUT_MS);
 
         vector<int> to_close;
         for (int i = 0; i < ready; ++i)

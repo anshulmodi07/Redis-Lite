@@ -21,6 +21,7 @@ CORE_SOURCES = [
     ROOT / "skiplist.cpp",
     ROOT / "eviction.cpp",
     ROOT / "rdb.cpp",
+    ROOT / "aof.cpp",
 ]
 
 SERVER_SOURCES = CORE_SOURCES + [

@@ -1,5 +1,6 @@
 #include "rdb.h"
 
+#include "aof.h"
 #include "encoding.h"
 #include "object.h"
 
@@ -742,7 +743,7 @@ bool bgsaveInProgress()
 bool startBgsave(const vector<RedisDb>& databases)
 {
 #if defined(__linux__) || defined(__APPLE__)
-    if (bgsave_in_progress)
+    if (bgsave_in_progress || bgrewriteInProgress())
     {
         return false;
     }

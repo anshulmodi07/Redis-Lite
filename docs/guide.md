@@ -2200,8 +2200,8 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V7.0  maxmemory config + approximated LRU/LFU eviction
 [x] V8.0  RDB snapshot (blocking SAVE)
 [x] V8.1  Fork-based BGSAVE (non-blocking)
-[ ] V8.2  AOF append + replay on startup
-[ ] V8.3  AOF fsync policies (always/everysec/no) + BGREWRITEAOF
+[x] V8.2  AOF append + replay on startup
+[x] V8.3  AOF fsync policies (always/everysec/no) + BGREWRITEAOF
 [ ] V9.0  Pub/Sub (SUBSCRIBE, PUBLISH, PSUBSCRIBE, channel state machine)
 [ ] V10.0 MULTI/EXEC/DISCARD transactions
 [ ] V10.1 WATCH optimistic locking

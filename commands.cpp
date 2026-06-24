@@ -7,7 +7,9 @@
 #include "cmd_string.h"
 #include "cmd_zset.h"
 #include "encoding.h"
+#include "aof.h"
 #include "eviction.h"
+#include "rdb.h"
 #include "object.h"
 #include "rdb.h"
 #include "resp.h"
@@ -438,6 +440,11 @@ string commandConfig(CommandContext& ctx, const vector<string>& argv)
             return encodeArray({key, to_string(g_server_config.maxmemory_samples)});
         }
 
+        if (key == "appendfsync")
+        {
+            return encodeArray({key, aofFsyncPolicyName(g_aof_fsync_policy)});
+        }
+
         return encodeError("ERR unknown configuration parameter");
     }
 
@@ -496,6 +503,18 @@ string commandConfig(CommandContext& ctx, const vector<string>& argv)
             return encodeOK();
         }
 
+        if (key == "appendfsync")
+        {
+            AofFsyncPolicy policy = AofFsyncPolicy::EverySec;
+            if (!parseAofFsyncPolicy(value, policy))
+            {
+                return encodeError("ERR invalid appendfsync value");
+            }
+
+            g_aof_fsync_policy = policy;
+            return encodeOK();
+        }
+
         return encodeError("ERR unsupported CONFIG parameter");
     }
 
@@ -514,7 +533,7 @@ string commandSave(CommandContext& ctx, const vector<string>&)
 
 string commandBgsave(CommandContext& ctx, const vector<string>&)
 {
-    if (bgsaveInProgress())
+    if (bgsaveInProgress() || bgrewriteInProgress())
     {
         return encodeError("ERR Background save already in progress");
     }
@@ -525,6 +544,21 @@ string commandBgsave(CommandContext& ctx, const vector<string>&)
     }
 
     return encodeSimpleString("Background saving started");
+}
+
+string commandBgrewriteAof(CommandContext& ctx, const vector<string>&)
+{
+    if (bgsaveInProgress() || bgrewriteInProgress())
+    {
+        return encodeError("ERR Background append only file rewriting already in progress");
+    }
+
+    if (!startBgrewrite(ctx.databases))
+    {
+        return encodeError("ERR bgrewriteaof failed");
+    }
+
+    return encodeSimpleString("Background append only file rewriting started");
 }
 
 void registerUtilityCommands(CommandTable& out)
@@ -547,6 +581,7 @@ void registerUtilityCommands(CommandTable& out)
     add(out, "CONFIG", -3, CMD_READONLY, commandConfig);
     add(out, "SAVE", 1, CMD_READONLY, commandSave);
     add(out, "BGSAVE", 1, CMD_READONLY, commandBgsave);
+    add(out, "BGREWRITEAOF", 1, CMD_READONLY, commandBgrewriteAof);
 }
 }
 
@@ -600,5 +635,11 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
         }
     }
 
-    return cmd.func(ctx, argv);
+    string result = cmd.func(ctx, argv);
+    if ((cmd.flags & CMD_WRITE) != 0)
+    {
+        aofAppendCommand(argv);
+    }
+
+    return result;
 }
