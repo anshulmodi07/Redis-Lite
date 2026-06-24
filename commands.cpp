@@ -9,6 +9,7 @@
 #include "encoding.h"
 #include "aof.h"
 #include "eviction.h"
+#include "multi.h"
 #include "pubsub.h"
 #include "rdb.h"
 #include "object.h"
@@ -609,6 +610,12 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
     if (argv.empty())
     {
         return encodeError("ERR unknown command");
+    }
+
+    string transaction_reply;
+    if (tryTransaction(ctx, argv, transaction_reply))
+    {
+        return transaction_reply;
     }
 
     if (ctx.client.pubsub_mode && !pubsubAllowsInMode(argv[0]))

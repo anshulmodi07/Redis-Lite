@@ -23,6 +23,7 @@ CORE_SOURCES = [
     ROOT / "rdb.cpp",
     ROOT / "aof.cpp",
     ROOT / "pubsub.cpp",
+    ROOT / "multi.cpp",
 ]
 
 SERVER_SOURCES = CORE_SOURCES + [

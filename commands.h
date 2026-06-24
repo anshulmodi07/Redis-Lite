@@ -18,6 +18,7 @@ struct CommandContext
     std::vector<RedisDb>& databases;
     std::unordered_map<int, Client>* clients = nullptr;
     int epoll_fd = -1;
+    bool exec_replay = false;
 
     RedisDb& db()
     {

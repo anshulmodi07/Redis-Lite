@@ -253,6 +253,17 @@ string encodeArray(const vector<string>& items)
     return response;
 }
 
+string encodeRespArray(const vector<string>& replies)
+{
+    string response = "*" + to_string(replies.size()) + "\r\n";
+    for (const string& reply : replies)
+    {
+        response += reply;
+    }
+
+    return response;
+}
+
 string encodeNullArray()
 {
     return "*-1\r\n";

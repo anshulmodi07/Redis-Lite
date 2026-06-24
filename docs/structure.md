@@ -1,16 +1,16 @@
 # Project Structure
 
-Current version: V9.0
+Current version: V10.0
 
 ```text
-|-- pubsub.h / pubsub.cpp   # SUBSCRIBE/PUBLISH/PSUBSCRIBE/PUBSUB
-|-- client.h                # pubsub_mode flag
-|-- eventloop.cpp           # client map passed to dispatch; cleanup on disconnect
-`-- tests/test_v9_0.py
+|-- multi.h / multi.cpp     # MULTI/EXEC/DISCARD transaction queue
+|-- client.h                # in_multi, multi_error, queued_commands
+|-- resp.h / resp.cpp       # encodeRespArray for EXEC replies
+`-- tests/test_v10_0.py
 ```
 
 ## File Responsibilities
 
-- `pubsub.cpp` — channel/pattern maps; push messages to subscriber `write_buf`.
-- `commands.cpp` — blocks non-pubsub commands when `client.pubsub_mode`.
-- `eventloop.cpp` — `clientWritePending()` for publish-side `EPOLLOUT`.
+- `multi.cpp` — queue commands after `MULTI`, run batch on `EXEC`, `DISCARD` clears state.
+- `commands.cpp` — `tryTransaction()` before normal dispatch; `exec_replay` skips re-queueing.
+- `client.h` — per-connection transaction state.

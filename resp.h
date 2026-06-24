@@ -21,4 +21,5 @@ std::string encodeInteger(long long value);
 std::string encodeBulkString(const std::string& value);
 std::string encodeNullBulk();
 std::string encodeArray(const std::vector<std::string>& items);
+std::string encodeRespArray(const std::vector<std::string>& replies);
 std::string encodeNullArray();
