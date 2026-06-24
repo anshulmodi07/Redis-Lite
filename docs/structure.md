@@ -1,10 +1,11 @@
 # Project Structure
 
-Current version: V5.1
+Current version: V5.2
 
 ```text
 |-- sds.h / sds.cpp         # SDS dynamic strings for raw string object storage
 |-- listpack.h / listpack.cpp  # compact sequential encoding for small collections
+|-- intset.h / intset.cpp      # sorted integer array encoding for integer-only sets
 |-- db.h                # RedisDb, expiry helpers, active expiry cycle, and monotonic clock
 |-- cmd_expire.cpp      # TTL command handlers (EXPIRE, TTL, PERSIST, ...)
 |-- cmd_expire.h
@@ -15,11 +16,12 @@ Current version: V5.1
 |-- cmd_set.cpp / cmd_list.cpp / cmd_hash.cpp / cmd_string.cpp
 |-- object.cpp
 |-- parser.cpp
-`-- tests/test_v5_1.py
+`-- tests/test_v5_2.py
 ```
 
 ## File Responsibilities
 
+- `intset.h` / `intset.cpp` - sorted int16/int32/int64 set storage with binary search and width upgrades.
 - `listpack.h` / `listpack.cpp` - contiguous listpack allocator, append, iteration, and decode API.
 - `sds.h` / `sds.cpp` - SDS allocation, length tracking, growth, and concatenation for `ENC_RAW` strings.
 - `db.h` - shared `RedisDb`, expiry metadata type, lazy/active expiry helpers, TTL helpers, and `nowMs()`.

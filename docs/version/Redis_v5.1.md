@@ -46,4 +46,4 @@ Results: listpack probe passes; hash/list/zset server regression passes in Linux
 
 # Next
 
-V5.2 adds intset encoding for integer-only sets.
+V5.3 wires listpack and intset in as default compact encodings with auto-promotion thresholds.

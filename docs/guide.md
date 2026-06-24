@@ -2189,7 +2189,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V4.3  EXPIRE/TTL/PERSIST command family
 [x] V5.0  SDS strings
 [x] V5.1  listpack encoding for small collections
-[ ] V5.2  intset encoding for integer sets
+[x] V5.2  intset encoding for integer sets
 [ ] V5.3  Auto-promotion between encodings (OBJECT ENCODING shows the result)
 [ ] V6.0  Command dispatch table, INFO/CONFIG/KEYS/SCAN/DEBUG commands
 [ ] V7.0  maxmemory config + approximated LRU/LFU eviction
