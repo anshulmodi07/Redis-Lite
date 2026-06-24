@@ -49,3 +49,4 @@ size_t stringObjectLength(const RedisObject* obj);
 bool readStringInteger(const RedisObject* obj, long long& out);
 void setStringInteger(RedisObject* obj, long long value);
 void setStringValue(RedisObject* obj, const std::string& value);
+void appendStringValue(RedisObject* obj, const std::string& suffix);

@@ -645,7 +645,7 @@ regardless of which encoding is active — the commands call the same typed inte
    ```cpp
    enum ObjectType { OBJ_STRING, OBJ_LIST, OBJ_HASH, OBJ_SET, OBJ_ZSET };
    enum ObjectEncoding {
-       ENC_RAW,        // plain std::string
+       ENC_RAW,        // SDS-backed raw string
        ENC_INT,        // integer stored as long long
        ENC_LISTPACK,   // compact sequential encoding (V5)
        ENC_QUICKLIST,  // linked list of listpack nodes (V5)
@@ -2187,7 +2187,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V4.1  Lazy expiry on every read
 [x] V4.2  Active expiry sweep (periodic, sampling-based)
 [x] V4.3  EXPIRE/TTL/PERSIST command family
-[ ] V5.0  SDS strings
+[x] V5.0  SDS strings
 [ ] V5.1  listpack encoding for small collections
 [ ] V5.2  intset encoding for integer sets
 [ ] V5.3  Auto-promotion between encodings (OBJECT ENCODING shows the result)

@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER_SRC = ROOT / "server.cpp"
 PARSER_SRC = ROOT / "parser.cpp"
 RESP_SRC = ROOT / "resp.cpp"
+SDS_SRC = ROOT / "sds.cpp"
 OBJECT_SRC = ROOT / "object.cpp"
 CMD_STRING_SRC = ROOT / "cmd_string.cpp"
 CMD_HASH_SRC = ROOT / "cmd_hash.cpp"
@@ -36,6 +37,7 @@ def compile_server():
             str(SERVER_SRC),
             str(PARSER_SRC),
             str(RESP_SRC),
+            str(SDS_SRC),
             str(OBJECT_SRC),
             str(CMD_STRING_SRC),
             str(CMD_HASH_SRC),

@@ -389,9 +389,8 @@ string commandAppend(const vector<string>& argv, Db& db)
         return wrongType();
     }
 
-    string merged = getStringValue(it->second) + argv[2];
-    setStringValue(it->second, merged);
-    return encodeInteger(static_cast<long long>(merged.size()));
+    appendStringValue(it->second, argv[2]);
+    return encodeInteger(static_cast<long long>(stringObjectLength(it->second)));
 }
 
 string commandStrLen(const vector<string>& argv, const Db& db)

@@ -1,5 +1,6 @@
 #include "object.h"
 
+#include "sds.h"
 #include "skiplist.h"
 
 #include <stdexcept>
@@ -39,7 +40,7 @@ RedisObject* createStringObject(const string& value)
     return new RedisObject{
         OBJ_STRING,
         ENC_RAW,
-        new string(value)};
+        sdsnewlen(value.data(), value.size())};
 }
 
 RedisObject* createListObject()
@@ -86,7 +87,7 @@ void destroyObject(RedisObject* obj)
     case OBJ_STRING:
         if (obj->encoding == ENC_RAW)
         {
-            delete static_cast<string*>(obj->ptr);
+            sdsfree(static_cast<sds>(obj->ptr));
         }
         else if (obj->encoding == ENC_INT)
         {
@@ -143,7 +144,8 @@ string getStringValue(const RedisObject* obj)
 
     if (obj->encoding == ENC_RAW)
     {
-        return *static_cast<const string*>(obj->ptr);
+        const sds raw = static_cast<sds>(obj->ptr);
+        return string(raw, sdslen(raw));
     }
 
     throw invalid_argument("unsupported string encoding");
@@ -151,7 +153,22 @@ string getStringValue(const RedisObject* obj)
 
 size_t stringObjectLength(const RedisObject* obj)
 {
-    return getStringValue(obj).size();
+    if (obj == nullptr || obj->type != OBJ_STRING)
+    {
+        throw invalid_argument("value is not a string object");
+    }
+
+    if (obj->encoding == ENC_INT)
+    {
+        return to_string(*static_cast<const long long*>(obj->ptr)).size();
+    }
+
+    if (obj->encoding == ENC_RAW)
+    {
+        return sdslen(static_cast<sds>(obj->ptr));
+    }
+
+    throw invalid_argument("unsupported string encoding");
 }
 
 bool readStringInteger(const RedisObject* obj, long long& out)
@@ -184,7 +201,7 @@ void setStringInteger(RedisObject* obj, long long value)
 
     if (obj->encoding == ENC_RAW)
     {
-        delete static_cast<string*>(obj->ptr);
+        sdsfree(static_cast<sds>(obj->ptr));
     }
     else if (obj->encoding == ENC_INT)
     {
@@ -204,7 +221,7 @@ void setStringValue(RedisObject* obj, const string& value)
 
     if (obj->encoding == ENC_RAW)
     {
-        delete static_cast<string*>(obj->ptr);
+        sdsfree(static_cast<sds>(obj->ptr));
     }
     else if (obj->encoding == ENC_INT)
     {
@@ -220,5 +237,32 @@ void setStringValue(RedisObject* obj, const string& value)
     }
 
     obj->encoding = ENC_RAW;
-    obj->ptr = new string(value);
+    obj->ptr = sdsnewlen(value.data(), value.size());
+}
+
+void appendStringValue(RedisObject* obj, const string& suffix)
+{
+    if (obj == nullptr || obj->type != OBJ_STRING)
+    {
+        throw invalid_argument("value is not a string object");
+    }
+
+    if (obj->encoding == ENC_INT)
+    {
+        const string current = to_string(*static_cast<long long*>(obj->ptr));
+        delete static_cast<long long*>(obj->ptr);
+        obj->encoding = ENC_RAW;
+        obj->ptr = sdsnewlen(current.data(), current.size());
+    }
+
+    obj->ptr = sdscatlen(static_cast<sds>(obj->ptr), suffix.data(), suffix.size());
+
+    const string merged = getStringValue(obj);
+    long long integer = 0;
+    if (tryParseInteger(merged, integer))
+    {
+        sdsfree(static_cast<sds>(obj->ptr));
+        obj->encoding = ENC_INT;
+        obj->ptr = new long long(integer);
+    }
 }

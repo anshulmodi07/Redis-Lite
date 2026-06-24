@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = [
     ROOT / "parser.cpp",
     ROOT / "resp.cpp",
+    ROOT / "sds.cpp",
     ROOT / "object.cpp",
     ROOT / "cmd_string.cpp",
     ROOT / "cmd_expire.cpp",

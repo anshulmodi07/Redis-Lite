@@ -34,7 +34,7 @@ def run_probe():
             }
         """))
         subprocess.run(
-            [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), str(src), str(ROOT / "object.cpp"), "-o", str(out)],
+            [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), str(src), str(ROOT / "sds.cpp"), str(ROOT / "object.cpp"), str(ROOT / "skiplist.cpp"), "-o", str(out)],
             check=True,
         )
         subprocess.run([str(out)], check=True)
