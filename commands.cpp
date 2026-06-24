@@ -9,6 +9,7 @@
 #include "encoding.h"
 #include "eviction.h"
 #include "object.h"
+#include "rdb.h"
 #include "resp.h"
 
 #include <algorithm>
@@ -501,6 +502,16 @@ string commandConfig(CommandContext& ctx, const vector<string>& argv)
     return wrongArity("CONFIG");
 }
 
+string commandSave(CommandContext& ctx, const vector<string>&)
+{
+    if (!saveRDB(g_rdb_filename, ctx.databases))
+    {
+        return encodeError("ERR rdb save failed");
+    }
+
+    return encodeOK();
+}
+
 void registerUtilityCommands(CommandTable& out)
 {
     add(out, "PING", -1, CMD_READONLY, commandPing);
@@ -519,6 +530,7 @@ void registerUtilityCommands(CommandTable& out)
     add(out, "OBJECT", 3, CMD_READONLY, commandObjectEncoding);
     add(out, "DEBUG", 3, CMD_READONLY, commandDebugSleep);
     add(out, "CONFIG", -3, CMD_READONLY, commandConfig);
+    add(out, "SAVE", 1, CMD_READONLY, commandSave);
 }
 }
 

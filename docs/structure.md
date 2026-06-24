@@ -1,25 +1,22 @@
 # Project Structure
 
-Current version: V7.0
+Current version: V8.0
 
 ```text
-|-- commands.h / commands.cpp  # command registry + utility/config commands
-|-- eviction.h / eviction.cpp  # maxmemory, approximated LRU eviction, memory estimates
-|-- client.h                   # per-connection state (fd, db_index, parser, write_buf)
-|-- object.h / object.cpp      # RedisObject with 24-bit lru clock field
-|-- tests/build_sources.py     # canonical CORE_SOURCES / SERVER_SOURCES for all tests
-|-- tests/dispatch_probe.h     # C++ probe helper for dispatch(client, databases, argv)
-`-- tests/test_v7_0.py
+|-- rdb.h / rdb.cpp           # RDB snapshot save/load, CRC64, default dump.rdb path
+|-- commands.cpp              # SAVE command; CONFIG from V7
+|-- eventloop.cpp             # load dump.rdb on startup before epoll loop
+|-- eviction.cpp              # maxmemory + LRU (V7)
+|-- tests/build_sources.py    # includes rdb.cpp in CORE_SOURCES
+`-- tests/test_v8_0.py
 ```
 
 ## File Responsibilities
 
-- `eviction.h` / `eviction.cpp` — `g_server_config`, memory estimation, `touchObject`, eviction policies, `ensureMemoryForWrite`.
-- `commands.cpp` — `CONFIG GET/SET` for `maxmemory`, `maxmemory-policy`, `maxmemory-samples`; write commands call `ensureMemoryForWrite` before execution.
-- `object.cpp` — sets `lru` on object creation via `touchObject`.
-- `parser.cpp` — touches keys on access after lazy expiry.
-- `tests/build_sources.py` — **V6+ baseline**: every server/probe link must include `commands.cpp` (and `eviction.cpp` from V7).
+- `rdb.cpp` — encodes all five types to `REDIS0011` format; `loadRDB` replaces in-memory state after CRC check.
+- `eventloop.cpp` — if `dump.rdb` exists at boot, calls `loadRDB()` before `initCommandTable()` client traffic.
+- `commands.cpp` — `SAVE` invokes `saveRDB(g_rdb_filename, ctx.databases)` (blocks entire server).
 
 ## Test Baseline (V6+)
 
-From V6 onward, `dispatch()` requires `Client`, `vector<RedisDb>`, and `commands.cpp`. All `tests/test_v*.py` scripts import `build_sources.py` instead of hand-maintained file lists. C++ probes use `tests/dispatch_probe.h`.
+All server tests use `tests/build_sources.py`. V8 adds `rdb.cpp` to `CORE_SOURCES`.

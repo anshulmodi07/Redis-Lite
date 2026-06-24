@@ -20,6 +20,7 @@ CORE_SOURCES = [
     ROOT / "cmd_zset.cpp",
     ROOT / "skiplist.cpp",
     ROOT / "eviction.cpp",
+    ROOT / "rdb.cpp",
 ]
 
 SERVER_SOURCES = CORE_SOURCES + [

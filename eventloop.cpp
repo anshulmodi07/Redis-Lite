@@ -4,12 +4,14 @@
 #include "commands.h"
 #include "db.h"
 #include "parser.h"
+#include "rdb.h"
 #include "resp.h"
 
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <fcntl.h>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <sys/epoll.h>
@@ -203,6 +205,11 @@ bool flushClient(Client& client)
 int runEventLoop(int server_fd)
 {
     initCommandTable();
+
+    if (ifstream(g_rdb_filename).good() && !loadRDB(g_rdb_filename, databases))
+    {
+        cout << "Failed to load RDB file: " << g_rdb_filename << "\n";
+    }
 
     if (!setNonBlocking(server_fd))
     {
