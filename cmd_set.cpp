@@ -1,5 +1,7 @@
 #include "cmd_set.h"
 
+#include "commands.h"
+
 #include "encoding.h"
 #include "resp.h"
 
@@ -476,79 +478,52 @@ string commandStoreOp(const vector<string>& argv, Db& db, vector<string> (*op)(c
 }
 }
 
-string dispatchSetCommand(const vector<string>& argv, Db& db)
+void registerSetCommands(CommandTable& table)
 {
-    const string& cmd = argv[0];
+    auto run = [&](const char* name, int arity, uint32_t flags, auto handler) {
+        table[name] = Command{name, handler, arity, flags};
+    };
 
-    if (cmd == "SADD")
-    {
-        return commandSAdd(argv, db);
-    }
-
-    if (cmd == "SREM")
-    {
-        return commandSRem(argv, db);
-    }
-
-    if (cmd == "SMEMBERS")
-    {
-        return commandSMembers(argv, db);
-    }
-
-    if (cmd == "SCARD")
-    {
-        return commandSCard(argv, db);
-    }
-
-    if (cmd == "SISMEMBER")
-    {
-        return commandSIsMember(argv, db);
-    }
-
-    if (cmd == "SMISMEMBER")
-    {
-        return commandSMIsMember(argv, db);
-    }
-
-    if (cmd == "SPOP")
-    {
-        return commandSPop(argv, db);
-    }
-
-    if (cmd == "SRANDMEMBER")
-    {
-        return commandSRandMember(argv, db);
-    }
-
-    if (cmd == "SINTER")
-    {
-        return commandSInter(argv, db);
-    }
-
-    if (cmd == "SUNION")
-    {
-        return commandSUnion(argv, db);
-    }
-
-    if (cmd == "SDIFF")
-    {
-        return commandSDiff(argv, db);
-    }
-
-    if (cmd == "SINTERSTORE")
-    {
-        return commandStoreOp(argv, db, setIntersection);
-    }
-
-    if (cmd == "SUNIONSTORE")
-    {
-        return commandStoreOp(argv, db, setUnion);
-    }
-
-    if (cmd == "SDIFFSTORE")
-    {
-        return commandStoreOp(argv, db, setDifference);
-    }
-
-    return encodeError("ERR unknown command");
+    run("SADD", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSAdd(argv, ctx.db().data);
+    });
+    run("SREM", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSRem(argv, ctx.db().data);
+    });
+    run("SMEMBERS", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSMembers(argv, ctx.db().data);
+    });
+    run("SCARD", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSCard(argv, ctx.db().data);
+    });
+    run("SISMEMBER", 3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSIsMember(argv, ctx.db().data);
+    });
+    run("SMISMEMBER", -3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSMIsMember(argv, ctx.db().data);
+    });
+    run("SPOP", -2, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSPop(argv, ctx.db().data);
+    });
+    run("SRANDMEMBER", -2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSRandMember(argv, ctx.db().data);
+    });
+    run("SINTER", -2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSInter(argv, ctx.db().data);
+    });
+    run("SUNION", -2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSUnion(argv, ctx.db().data);
+    });
+    run("SDIFF", -2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSDiff(argv, ctx.db().data);
+    });
+    run("SINTERSTORE", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandStoreOp(argv, ctx.db().data, setIntersection);
+    });
+    run("SUNIONSTORE", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandStoreOp(argv, ctx.db().data, setUnion);
+    });
+    run("SDIFFSTORE", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandStoreOp(argv, ctx.db().data, setDifference);
+    });
 }

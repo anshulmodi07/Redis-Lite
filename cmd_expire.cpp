@@ -1,5 +1,6 @@
 #include "cmd_expire.h"
 
+#include "commands.h"
 #include "resp.h"
 
 using namespace std;
@@ -98,4 +99,25 @@ string dispatchExpireCommand(const vector<string>& argv, RedisDb& db)
     }
 
     return encodeError("ERR unknown command");
+}
+
+void registerExpireCommands(CommandTable& table)
+{
+    auto run = [&](const char* name, int arity, uint32_t flags) {
+        table[name] = Command{
+            name,
+            [](CommandContext& ctx, const vector<string>& argv) {
+                return dispatchExpireCommand(argv, ctx.db());
+            },
+            arity,
+            flags};
+    };
+
+    run("EXPIRE", 3, CMD_WRITE);
+    run("PEXPIRE", 3, CMD_WRITE);
+    run("EXPIREAT", 3, CMD_WRITE);
+    run("PEXPIREAT", 3, CMD_WRITE);
+    run("TTL", 2, CMD_READONLY);
+    run("PTTL", 2, CMD_READONLY);
+    run("PERSIST", 2, CMD_WRITE);
 }

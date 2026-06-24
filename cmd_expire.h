@@ -1,5 +1,6 @@
 #pragma once
 
+#include "commands.h"
 #include "db.h"
 
 #include <string>

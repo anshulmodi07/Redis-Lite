@@ -1,5 +1,7 @@
 #include "cmd_string.h"
 
+#include "commands.h"
+
 #include "resp.h"
 
 using namespace std;
@@ -415,84 +417,49 @@ string commandStrLen(const vector<string>& argv, const Db& db)
 }
 }
 
-string dispatchStringCommand(const vector<string>& argv, RedisDb& db)
+void registerStringCommands(CommandTable& table)
 {
-    const string& cmd = argv[0];
+    auto run = [&](const char* name, int arity, uint32_t flags, auto handler) {
+        table[name] = Command{name, handler, arity, flags};
+    };
 
-    if (cmd == "SET")
-    {
-        return commandSet(argv, db);
-    }
-
-    if (cmd == "GET")
-    {
-        return commandGet(argv, db.data);
-    }
-
-    if (cmd == "GETSET")
-    {
-        return commandGetSet(argv, db.data);
-    }
-
-    if (cmd == "MSET")
-    {
-        return commandMSet(argv, db.data);
-    }
-
-    if (cmd == "MGET")
-    {
-        return commandMGet(argv, db.data);
-    }
-
-    if (cmd == "SETNX")
-    {
-        return commandSetNx(argv, db.data);
-    }
-
-    if (cmd == "SETEX")
-    {
-        return commandSetEx(argv, db);
-    }
-
-    if (cmd == "INCR")
-    {
-        return commandIncrBy(argv, db.data, 1);
-    }
-
-    if (cmd == "DECR")
-    {
-        return commandIncrBy(argv, db.data, -1);
-    }
-
-    if (cmd == "INCRBY")
-    {
-        if (argv.size() != 3)
-        {
-            return wrongArity(argv[0]);
-        }
-
-        return adjustInteger(db.data, argv[1], stoll(argv[2]));
-    }
-
-    if (cmd == "DECRBY")
-    {
-        if (argv.size() != 3)
-        {
-            return wrongArity(argv[0]);
-        }
-
-        return adjustInteger(db.data, argv[1], -stoll(argv[2]));
-    }
-
-    if (cmd == "APPEND")
-    {
-        return commandAppend(argv, db.data);
-    }
-
-    if (cmd == "STRLEN")
-    {
-        return commandStrLen(argv, db.data);
-    }
-
-    return encodeError("ERR unknown command");
+    run("SET", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSet(argv, ctx.db());
+    });
+    run("GET", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandGet(argv, ctx.db().data);
+    });
+    run("GETSET", 3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandGetSet(argv, ctx.db().data);
+    });
+    run("MSET", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandMSet(argv, ctx.db().data);
+    });
+    run("MGET", -2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandMGet(argv, ctx.db().data);
+    });
+    run("SETNX", 3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSetNx(argv, ctx.db().data);
+    });
+    run("SETEX", 4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandSetEx(argv, ctx.db());
+    });
+    run("INCR", 2, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandIncrBy(argv, ctx.db().data, 1);
+    });
+    run("DECR", 2, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandIncrBy(argv, ctx.db().data, -1);
+    });
+    run("INCRBY", 3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return adjustInteger(ctx.db().data, argv[1], stoll(argv[2]));
+    });
+    run("DECRBY", 3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return adjustInteger(ctx.db().data, argv[1], -stoll(argv[2]));
+    });
+    run("APPEND", 3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandAppend(argv, ctx.db().data);
+    });
+    run("STRLEN", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandStrLen(argv, ctx.db().data);
+    });
 }

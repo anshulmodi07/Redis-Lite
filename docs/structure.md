@@ -1,34 +1,25 @@
 # Project Structure
 
-Current version: V5.2
+Current version: V6.0
 
 ```text
-|-- sds.h / sds.cpp         # SDS dynamic strings for raw string object storage
-|-- listpack.h / listpack.cpp  # compact sequential encoding for small collections
-|-- intset.h / intset.cpp      # sorted integer array encoding for integer-only sets
-|-- db.h                # RedisDb, expiry helpers, active expiry cycle, and monotonic clock
-|-- cmd_expire.cpp      # TTL command handlers (EXPIRE, TTL, PERSIST, ...)
-|-- cmd_expire.h
-|-- cmd_zset.cpp        # Sorted set command handlers (ZADD, ZRANGE, ZRANK, ...)
-|-- cmd_zset.h
-|-- skiplist.cpp        # Ordered ZSET index API over score/member pairs
-|-- skiplist.h
-|-- cmd_set.cpp / cmd_list.cpp / cmd_hash.cpp / cmd_string.cpp
-|-- object.cpp
-|-- parser.cpp
-`-- tests/test_v5_2.py
+|-- commands.h / commands.cpp  # command registry, arity checks, utility commands
+|-- client.h                   # per-connection state (fd, db_index, parser, write_buf)
+|-- sds.h / sds.cpp
+|-- listpack.h / listpack.cpp
+|-- intset.h / intset.cpp
+|-- encoding.h / encoding.cpp
+|-- db.h                       # RedisDb, expiry helpers, active expiry cycle
+|-- cmd_*.h / cmd_*.cpp        # per-type handlers registered into commands.cpp
+|-- parser.cpp                 # tokenize + lazy expiry + executeCommand dispatch
+|-- eventloop.cpp              # epoll loop, 16 logical databases
+`-- tests/test_v6_0.py
 ```
 
 ## File Responsibilities
 
-- `intset.h` / `intset.cpp` - sorted int16/int32/int64 set storage with binary search and width upgrades.
-- `listpack.h` / `listpack.cpp` - contiguous listpack allocator, append, iteration, and decode API.
-- `sds.h` / `sds.cpp` - SDS allocation, length tracking, growth, and concatenation for `ENC_RAW` strings.
-- `db.h` - shared `RedisDb`, expiry metadata type, lazy/active expiry helpers, TTL helpers, and `nowMs()`.
-- `cmd_expire.h` / `cmd_expire.cpp` - expiry command family on the shared expiry map.
-- `cmd_zset.h` / `cmd_zset.cpp` - sorted set commands on `OBJ_ZSET`.
-- `skiplist.h` / `skiplist.cpp` - ordered score/member index plus member score lookup helpers for sorted sets.
-- `cmd_set.h` / `cmd_set.cpp` - set commands on `unordered_set<string>` inside `OBJ_SET`.
-- `object.cpp` - creates and destroys string/list/hash/set/zset backing objects; raw strings use SDS.
-- `parser.cpp` - lazily expires touched keys, then routes command families to command modules.
-- `eventloop.cpp` - owns the process-wide DB and runs active expiry every ~100ms.
+- `commands.h` / `commands.cpp` — `Command` metadata, `commandTable` hash map, `executeCommand`, and utility commands (`ECHO`, `SELECT`, `KEYS`, `SCAN`, `RENAME`, `DEBUG SLEEP`, ...).
+- `client.h` — connection state including selected database index.
+- `parser.cpp` — RESP path still flows through `dispatch()` which applies lazy expiry then calls `executeCommand`.
+- `cmd_*.cpp` — each module exports `register*Commands()` to populate the central table.
+- `eventloop.cpp` — owns `vector<RedisDb>` (16 DBs), initializes the command table at startup.

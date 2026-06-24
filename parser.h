@@ -1,14 +1,14 @@
 #pragma once
 
+#include "client.h"
 #include "db.h"
-#include "object.h"
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 std::vector<std::string> tokenize(const std::string& line);
 
 std::string dispatch(
-    const std::vector<std::string>& argv,
-    RedisDb& db);
+    Client& client,
+    std::vector<RedisDb>& databases,
+    const std::vector<std::string>& argv);

@@ -1,8 +1,8 @@
 #include "eventloop.h"
 
 #include "client.h"
+#include "commands.h"
 #include "db.h"
-#include "object.h"
 #include "parser.h"
 #include "resp.h"
 
@@ -27,8 +27,9 @@ constexpr size_t BUFFER_SIZE = 1024;
 constexpr size_t MAX_REQUEST_BUFFER_SIZE = 4096;
 constexpr int MAX_EVENTS = 64;
 constexpr int EPOLL_WAIT_TIMEOUT_MS = 100;
+constexpr size_t DB_COUNT = 16;
 
-RedisDb database;
+vector<RedisDb> databases(DB_COUNT);
 
 bool setNonBlocking(int fd)
 {
@@ -120,7 +121,7 @@ void queueParsedReplies(Client& client)
 
     while (client.parser.tryParse(argv))
     {
-        client.write_buf += dispatch(argv, database);
+        client.write_buf += dispatch(client, databases, argv);
     }
 }
 
@@ -201,6 +202,8 @@ bool flushClient(Client& client)
 
 int runEventLoop(int server_fd)
 {
+    initCommandTable();
+
     if (!setNonBlocking(server_fd))
     {
         cout << "Failed to set server non-blocking: " << strerror(errno) << "\n";
@@ -243,7 +246,10 @@ int runEventLoop(int server_fd)
             return 1;
         }
 
-        activeExpireCycle(database);
+        for (RedisDb& db : databases)
+        {
+            activeExpireCycle(db);
+        }
 
         vector<int> to_close;
         for (int i = 0; i < ready; ++i)

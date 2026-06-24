@@ -1,5 +1,7 @@
 #include "cmd_hash.h"
 
+#include "commands.h"
+
 #include "encoding.h"
 #include "resp.h"
 
@@ -295,59 +297,43 @@ string commandHIncrBy(const vector<string>& argv, Db& db)
 }
 }
 
-string dispatchHashCommand(const vector<string>& argv, Db& db)
+void registerHashCommands(CommandTable& table)
 {
-    const string& cmd = argv[0];
+    auto run = [&](const char* name, int arity, uint32_t flags, auto handler) {
+        table[name] = Command{name, handler, arity, flags};
+    };
 
-    if (cmd == "HSET" || cmd == "HMSET")
-    {
-        return commandHSet(argv, db);
-    }
-
-    if (cmd == "HGET")
-    {
-        return commandHGet(argv, db);
-    }
-
-    if (cmd == "HMGET")
-    {
-        return commandHMGet(argv, db);
-    }
-
-    if (cmd == "HDEL")
-    {
-        return commandHDel(argv, db);
-    }
-
-    if (cmd == "HEXISTS")
-    {
-        return commandHExists(argv, db);
-    }
-
-    if (cmd == "HLEN")
-    {
-        return commandHLen(argv, db);
-    }
-
-    if (cmd == "HKEYS")
-    {
-        return commandHKeys(argv, db);
-    }
-
-    if (cmd == "HVALS")
-    {
-        return commandHVals(argv, db);
-    }
-
-    if (cmd == "HGETALL")
-    {
-        return commandHGetAll(argv, db);
-    }
-
-    if (cmd == "HINCRBY")
-    {
-        return commandHIncrBy(argv, db);
-    }
-
-    return encodeError("ERR unknown command");
+    run("HSET", -4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHSet(argv, ctx.db().data);
+    });
+    run("HMSET", -4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHSet(argv, ctx.db().data);
+    });
+    run("HGET", 3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHGet(argv, ctx.db().data);
+    });
+    run("HMGET", -3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHMGet(argv, ctx.db().data);
+    });
+    run("HDEL", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHDel(argv, ctx.db().data);
+    });
+    run("HEXISTS", 3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHExists(argv, ctx.db().data);
+    });
+    run("HLEN", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHLen(argv, ctx.db().data);
+    });
+    run("HKEYS", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHKeys(argv, ctx.db().data);
+    });
+    run("HVALS", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHVals(argv, ctx.db().data);
+    });
+    run("HGETALL", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHGetAll(argv, ctx.db().data);
+    });
+    run("HINCRBY", 4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandHIncrBy(argv, ctx.db().data);
+    });
 }

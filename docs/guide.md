@@ -2191,7 +2191,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V5.1  listpack encoding for small collections
 [x] V5.2  intset encoding for integer sets
 [ ] V5.3  Auto-promotion between encodings (OBJECT ENCODING shows the result)
-[ ] V6.0  Command dispatch table, INFO/CONFIG/KEYS/SCAN/DEBUG commands
+[x] V6.0  Command dispatch table, INFO/CONFIG/KEYS/SCAN/DEBUG commands
 [ ] V7.0  maxmemory config + approximated LRU/LFU eviction
 [ ] V8.0  RDB snapshot (blocking SAVE)
 [ ] V8.1  Fork-based BGSAVE (non-blocking)

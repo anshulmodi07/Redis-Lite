@@ -1,5 +1,7 @@
 #include "cmd_list.h"
 
+#include "commands.h"
+
 #include "encoding.h"
 #include "resp.h"
 
@@ -349,64 +351,43 @@ string commandLTrim(const vector<string>& argv, Db& db)
 }
 }
 
-string dispatchListCommand(const vector<string>& argv, Db& db)
+void registerListCommands(CommandTable& table)
 {
-    const string& cmd = argv[0];
+    auto run = [&](const char* name, int arity, uint32_t flags, auto handler) {
+        table[name] = Command{name, handler, arity, flags};
+    };
 
-    if (cmd == "LPUSH")
-    {
-        return commandLPush(argv, db);
-    }
-
-    if (cmd == "RPUSH")
-    {
-        return commandRPush(argv, db);
-    }
-
-    if (cmd == "LPOP")
-    {
-        return commandLPop(argv, db);
-    }
-
-    if (cmd == "RPOP")
-    {
-        return commandRPop(argv, db);
-    }
-
-    if (cmd == "LLEN")
-    {
-        return commandLLen(argv, db);
-    }
-
-    if (cmd == "LRANGE")
-    {
-        return commandLRange(argv, db);
-    }
-
-    if (cmd == "LINDEX")
-    {
-        return commandLIndex(argv, db);
-    }
-
-    if (cmd == "LSET")
-    {
-        return commandLSet(argv, db);
-    }
-
-    if (cmd == "LINSERT")
-    {
-        return commandLInsert(argv, db);
-    }
-
-    if (cmd == "LREM")
-    {
-        return commandLRem(argv, db);
-    }
-
-    if (cmd == "LTRIM")
-    {
-        return commandLTrim(argv, db);
-    }
-
-    return encodeError("ERR unknown command");
+    run("LPUSH", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLPush(argv, ctx.db().data);
+    });
+    run("RPUSH", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandRPush(argv, ctx.db().data);
+    });
+    run("LPOP", -2, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLPop(argv, ctx.db().data);
+    });
+    run("RPOP", -2, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandRPop(argv, ctx.db().data);
+    });
+    run("LLEN", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLLen(argv, ctx.db().data);
+    });
+    run("LRANGE", 4, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLRange(argv, ctx.db().data);
+    });
+    run("LINDEX", 3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLIndex(argv, ctx.db().data);
+    });
+    run("LSET", 4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLSet(argv, ctx.db().data);
+    });
+    run("LINSERT", 5, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLInsert(argv, ctx.db().data);
+    });
+    run("LREM", 4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLRem(argv, ctx.db().data);
+    });
+    run("LTRIM", 4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandLTrim(argv, ctx.db().data);
+    });
 }

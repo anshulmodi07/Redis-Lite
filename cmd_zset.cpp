@@ -1,5 +1,7 @@
 #include "cmd_zset.h"
 
+#include "commands.h"
+
 #include "encoding.h"
 #include "resp.h"
 
@@ -392,20 +394,49 @@ string commandZPop(const vector<string>& argv, Db& db, bool max_side)
 }
 }
 
-string dispatchZSetCommand(const vector<string>& argv, Db& db)
+void registerZSetCommands(CommandTable& table)
 {
-    const string& cmd = argv[0];
-    if (cmd == "ZADD") return commandZAdd(argv, db);
-    if (cmd == "ZRANGE" || cmd == "ZRANGEBYSCORE") return commandZRange(argv, db, false);
-    if (cmd == "ZREVRANGE") return commandZRange(argv, db, true);
-    if (cmd == "ZRANK") return commandZRank(argv, db, false);
-    if (cmd == "ZREVRANK") return commandZRank(argv, db, true);
-    if (cmd == "ZSCORE") return commandZScore(argv, db);
-    if (cmd == "ZCARD") return commandZCard(argv, db);
-    if (cmd == "ZCOUNT") return commandZCount(argv, db);
-    if (cmd == "ZREM") return commandZRem(argv, db);
-    if (cmd == "ZINCRBY") return commandZIncrBy(argv, db);
-    if (cmd == "ZPOPMIN") return commandZPop(argv, db, false);
-    if (cmd == "ZPOPMAX") return commandZPop(argv, db, true);
-    return encodeError("ERR unknown command");
+    auto run = [&](const char* name, int arity, uint32_t flags, auto handler) {
+        table[name] = Command{name, handler, arity, flags};
+    };
+
+    run("ZADD", -4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZAdd(argv, ctx.db().data);
+    });
+    run("ZRANGE", -4, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZRange(argv, ctx.db().data, false);
+    });
+    run("ZRANGEBYSCORE", -4, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZRange(argv, ctx.db().data, false);
+    });
+    run("ZREVRANGE", -4, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZRange(argv, ctx.db().data, true);
+    });
+    run("ZRANK", 3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZRank(argv, ctx.db().data, false);
+    });
+    run("ZREVRANK", 3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZRank(argv, ctx.db().data, true);
+    });
+    run("ZSCORE", 3, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZScore(argv, ctx.db().data);
+    });
+    run("ZCARD", 2, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZCard(argv, ctx.db().data);
+    });
+    run("ZCOUNT", 4, CMD_READONLY, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZCount(argv, ctx.db().data);
+    });
+    run("ZREM", -3, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZRem(argv, ctx.db().data);
+    });
+    run("ZINCRBY", 4, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZIncrBy(argv, ctx.db().data);
+    });
+    run("ZPOPMIN", -2, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZPop(argv, ctx.db().data, false);
+    });
+    run("ZPOPMAX", -2, CMD_WRITE, [](CommandContext& ctx, const vector<string>& argv) {
+        return commandZPop(argv, ctx.db().data, true);
+    });
 }
