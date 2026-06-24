@@ -1,6 +1,7 @@
 #include "parser.h"
 
 #include "commands.h"
+#include "eviction.h"
 #include "resp.h"
 
 #include <algorithm>
@@ -183,6 +184,11 @@ string dispatch(Client& client, vector<RedisDb>& databases, const vector<string>
         if (pos < normalized.size() && seen.insert(pos).second)
         {
             expireIfNeeded(ctx.db(), normalized[pos]);
+            auto it = ctx.db().data.find(normalized[pos]);
+            if (it != ctx.db().data.end())
+            {
+                touchObject(it->second);
+            }
         }
     }
 

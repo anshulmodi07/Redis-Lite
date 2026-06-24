@@ -4,28 +4,13 @@ import subprocess
 import time
 from pathlib import Path
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from build_sources import CORE_SOURCES, SERVER_SOURCES
+
 
 ROOT = Path(__file__).resolve().parents[1]
-PROBE_SOURCES = [
-    ROOT / "parser.cpp",
-    ROOT / "resp.cpp",
-    ROOT / "sds.cpp",
-    ROOT / "listpack.cpp",
-    ROOT / "intset.cpp",
-    ROOT / "encoding.cpp",
-    ROOT / "object.cpp",
-    ROOT / "cmd_string.cpp",
-    ROOT / "cmd_expire.cpp",
-    ROOT / "cmd_hash.cpp",
-    ROOT / "cmd_list.cpp",
-    ROOT / "cmd_set.cpp",
-    ROOT / "cmd_zset.cpp",
-    ROOT / "skiplist.cpp",
-]
-SERVER_SOURCES = PROBE_SOURCES + [
-    ROOT / "server.cpp",
-    ROOT / "eventloop.cpp",
-]
+PROBE_SOURCES = CORE_SOURCES
 SERVER_BIN = ROOT / "tests" / "server_v5_2_bin"
 PROBE_BIN = ROOT / "tests" / "probe_v5_2_bin"
 PROBE_SRC = ROOT / "tests" / "probe_v5_2.cpp"

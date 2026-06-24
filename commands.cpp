@@ -7,6 +7,7 @@
 #include "cmd_string.h"
 #include "cmd_zset.h"
 #include "encoding.h"
+#include "eviction.h"
 #include "object.h"
 #include "resp.h"
 
@@ -406,6 +407,100 @@ string commandDebugSleep(CommandContext&, const vector<string>& argv)
     return encodeOK();
 }
 
+string commandConfig(CommandContext& ctx, const vector<string>& argv)
+{
+    string sub = argv[1];
+    transform(sub.begin(), sub.end(), sub.begin(), [](unsigned char ch) {
+        return static_cast<char>(toupper(ch));
+    });
+
+    if (sub == "GET")
+    {
+        if (argv.size() != 3)
+        {
+            return wrongArity("CONFIG");
+        }
+
+        const string& key = argv[2];
+        if (key == "maxmemory")
+        {
+            return encodeArray({key, to_string(g_server_config.maxmemory)});
+        }
+
+        if (key == "maxmemory-policy")
+        {
+            return encodeArray({key, evictionPolicyName(g_server_config.maxmemory_policy)});
+        }
+
+        if (key == "maxmemory-samples")
+        {
+            return encodeArray({key, to_string(g_server_config.maxmemory_samples)});
+        }
+
+        return encodeError("ERR unknown configuration parameter");
+    }
+
+    if (sub == "SET")
+    {
+        if (argv.size() != 4)
+        {
+            return wrongArity("CONFIG");
+        }
+
+        const string& key = argv[2];
+        const string& value = argv[3];
+        if (key == "maxmemory")
+        {
+            size_t bytes = 0;
+            if (!parseMemoryBytes(value, bytes))
+            {
+                return encodeError("ERR invalid maxmemory value");
+            }
+
+            g_server_config.maxmemory = bytes;
+            string err = ensureMemoryForWrite(ctx.databases);
+            return err.empty() ? encodeOK() : err;
+        }
+
+        if (key == "maxmemory-policy")
+        {
+            EvictionPolicy policy = EvictionPolicy::NoEviction;
+            if (!parseEvictionPolicy(value, policy))
+            {
+                return encodeError("ERR unsupported maxmemory policy");
+            }
+
+            g_server_config.maxmemory_policy = policy;
+            return encodeOK();
+        }
+
+        if (key == "maxmemory-samples")
+        {
+            long long samples = 0;
+            try
+            {
+                samples = stoll(value);
+            }
+            catch (...)
+            {
+                return encodeError("ERR invalid maxmemory samples");
+            }
+
+            if (samples <= 0)
+            {
+                return encodeError("ERR invalid maxmemory samples");
+            }
+
+            g_server_config.maxmemory_samples = static_cast<size_t>(samples);
+            return encodeOK();
+        }
+
+        return encodeError("ERR unsupported CONFIG parameter");
+    }
+
+    return wrongArity("CONFIG");
+}
+
 void registerUtilityCommands(CommandTable& out)
 {
     add(out, "PING", -1, CMD_READONLY, commandPing);
@@ -423,6 +518,7 @@ void registerUtilityCommands(CommandTable& out)
     add(out, "RENAMENX", 3, CMD_WRITE, commandRenameNx);
     add(out, "OBJECT", 3, CMD_READONLY, commandObjectEncoding);
     add(out, "DEBUG", 3, CMD_READONLY, commandDebugSleep);
+    add(out, "CONFIG", -3, CMD_READONLY, commandConfig);
 }
 }
 
@@ -465,6 +561,15 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
     if (!arityOk(cmd, argv.size()))
     {
         return wrongArity(argv[0]);
+    }
+
+    if ((cmd.flags & CMD_WRITE) != 0)
+    {
+        string oom = ensureMemoryForWrite(ctx.databases);
+        if (!oom.empty())
+        {
+            return oom;
+        }
     }
 
     return cmd.func(ctx, argv);

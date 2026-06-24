@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <list>
 #include <string>
 #include <unordered_map>
@@ -30,6 +31,7 @@ struct RedisObject
     ObjectType type;
     ObjectEncoding encoding;
     void* ptr;
+    uint32_t lru = 0;
 };
 
 using Db = std::unordered_map<std::string, RedisObject*>;

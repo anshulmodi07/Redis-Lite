@@ -1575,6 +1575,11 @@ lookup O(1) and makes it trivial to add new commands without touching a giant sw
 🔓 **Unlocks**: Adding new commands is now a one-liner registration. Makes V9 (transactions),
 V8 (pub/sub), and V10 (scripting) much easier to hook in.
 
+**Test baseline (V6+)**: All `tests/test_v*.py` scripts import `tests/build_sources.py`
+(`CORE_SOURCES` / `SERVER_SOURCES`). Every link must include `commands.cpp` because
+`dispatch(Client&, vector<RedisDb>&, argv)` replaced the old `dispatch(argv, RedisDb&)`.
+C++ probes include `tests/dispatch_probe.h`.
+
 ---
 
 ## Phase 7 — Memory Management
@@ -2192,7 +2197,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V5.2  intset encoding for integer sets
 [ ] V5.3  Auto-promotion between encodings (OBJECT ENCODING shows the result)
 [x] V6.0  Command dispatch table, INFO/CONFIG/KEYS/SCAN/DEBUG commands
-[ ] V7.0  maxmemory config + approximated LRU/LFU eviction
+[x] V7.0  maxmemory config + approximated LRU/LFU eviction
 [ ] V8.0  RDB snapshot (blocking SAVE)
 [ ] V8.1  Fork-based BGSAVE (non-blocking)
 [ ] V8.2  AOF append + replay on startup

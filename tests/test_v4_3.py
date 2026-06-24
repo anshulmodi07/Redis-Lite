@@ -6,25 +6,13 @@ import textwrap
 import time
 from pathlib import Path
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from build_sources import CORE_SOURCES, SERVER_SOURCES
+
 
 ROOT = Path(__file__).resolve().parents[1]
-PROBE_SOURCES = [
-    ROOT / "parser.cpp",
-    ROOT / "resp.cpp",
-    ROOT / "sds.cpp",
-    ROOT / "object.cpp",
-    ROOT / "cmd_string.cpp",
-    ROOT / "cmd_expire.cpp",
-    ROOT / "cmd_hash.cpp",
-    ROOT / "cmd_list.cpp",
-    ROOT / "cmd_set.cpp",
-    ROOT / "cmd_zset.cpp",
-    ROOT / "skiplist.cpp",
-]
-SERVER_SOURCES = PROBE_SOURCES + [
-    ROOT / "server.cpp",
-    ROOT / "eventloop.cpp",
-]
+PROBE_SOURCES = CORE_SOURCES
 SERVER_BIN = ROOT / "tests" / "server_v4_3_bin"
 HOST = "127.0.0.1"
 PORT = 8080
@@ -45,34 +33,36 @@ def run_probe():
         src = Path(tmp) / "probe.cpp"
         out = Path(tmp) / "probe"
         src.write_text(textwrap.dedent("""
-            #include "parser.h"
+            #include "dispatch_probe.h"
             #include <cassert>
+            #include <vector>
 
             int main() {
-                RedisDb db;
-                assert(dispatch({"SET", "k", "v", "EX", "2"}, db) == "+OK\\r\\n");
+                std::vector<RedisDb> dbs(1);
+                RedisDb& db = dbs[0];
+                assert(dispatchProbe(dbs, {"SET", "k", "v", "EX", "2"}) == "+OK\\r\\n");
                 assert(ttlSeconds(db, "k") >= 1);
 
-                assert(dispatch({"SET", "permanent", "hello"}, db) == "+OK\\r\\n");
-                assert(dispatch({"EXPIRE", "permanent", "10"}, db) == ":1\\r\\n");
-                assert(dispatch({"PERSIST", "permanent"}, db) == ":1\\r\\n");
-                assert(dispatch({"TTL", "permanent"}, db) == ":-1\\r\\n");
+                assert(dispatchProbe(dbs, {"SET", "permanent", "hello"}) == "+OK\\r\\n");
+                assert(dispatchProbe(dbs, {"EXPIRE", "permanent", "10"}) == ":1\\r\\n");
+                assert(dispatchProbe(dbs, {"PERSIST", "permanent"}) == ":1\\r\\n");
+                assert(dispatchProbe(dbs, {"TTL", "permanent"}) == ":-1\\r\\n");
 
-                assert(dispatch({"EXPIRE", "missing", "10"}, db) == ":0\\r\\n");
-                assert(dispatch({"TTL", "missing"}, db) == ":-2\\r\\n");
+                assert(dispatchProbe(dbs, {"EXPIRE", "missing", "10"}) == ":0\\r\\n");
+                assert(dispatchProbe(dbs, {"TTL", "missing"}) == ":-2\\r\\n");
 
-                assert(dispatch({"SET", "gone", "x", "PX", "1"}, db) == "+OK\\r\\n");
+                assert(dispatchProbe(dbs, {"SET", "gone", "x", "PX", "1"}) == "+OK\\r\\n");
                 db.expires["gone"] = nowMs() - 1;
-                assert(dispatch({"GET", "gone"}, db) == "$-1\\r\\n");
+                assert(dispatchProbe(dbs, {"GET", "gone"}) == "$-1\\r\\n");
 
-                assert(dispatch({"SET", "delme", "x"}, db) == "+OK\\r\\n");
-                assert(dispatch({"EXPIRE", "delme", "60"}, db) == ":1\\r\\n");
-                assert(dispatch({"DEL", "delme"}, db) == ":1\\r\\n");
+                assert(dispatchProbe(dbs, {"SET", "delme", "x"}) == "+OK\\r\\n");
+                assert(dispatchProbe(dbs, {"EXPIRE", "delme", "60"}) == ":1\\r\\n");
+                assert(dispatchProbe(dbs, {"DEL", "delme"}) == ":1\\r\\n");
                 assert(db.expires.count("delme") == 0);
             }
         """))
         subprocess.run(
-            [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), str(src), *map(str, PROBE_SOURCES), "-o", str(out)],
+            [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), "-I", str(ROOT / "tests"), str(src), *map(str, PROBE_SOURCES), "-o", str(out)],
             check=True,
         )
         subprocess.run([str(out)], check=True)

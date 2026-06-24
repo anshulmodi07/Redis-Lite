@@ -1,30 +1,14 @@
 import os
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from build_sources import SERVER_SOURCES
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVER_SOURCES = [
-    ROOT / "parser.cpp",
-    ROOT / "commands.cpp",
-    ROOT / "resp.cpp",
-    ROOT / "sds.cpp",
-    ROOT / "listpack.cpp",
-    ROOT / "intset.cpp",
-    ROOT / "encoding.cpp",
-    ROOT / "object.cpp",
-    ROOT / "cmd_string.cpp",
-    ROOT / "cmd_expire.cpp",
-    ROOT / "cmd_hash.cpp",
-    ROOT / "cmd_list.cpp",
-    ROOT / "cmd_set.cpp",
-    ROOT / "cmd_zset.cpp",
-    ROOT / "skiplist.cpp",
-    ROOT / "server.cpp",
-    ROOT / "eventloop.cpp",
-]
 SERVER_BIN = ROOT / "tests" / "server_v6_0_bin"
 HOST = "127.0.0.1"
 PORT = 8080

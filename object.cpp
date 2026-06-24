@@ -1,5 +1,6 @@
 #include "object.h"
 
+#include "eviction.h"
 #include "intset.h"
 #include "listpack.h"
 #include "sds.h"
@@ -8,6 +9,16 @@
 #include <stdexcept>
 
 using namespace std;
+
+namespace
+{
+RedisObject* makeObject(ObjectType type, ObjectEncoding encoding, void* ptr)
+{
+    auto* obj = new RedisObject{type, encoding, ptr};
+    touchObject(obj);
+    return obj;
+}
+}
 
 bool tryParseInteger(const string& value, long long& out)
 {
@@ -33,48 +44,30 @@ RedisObject* createStringObject(const string& value)
     long long integer = 0;
     if (tryParseInteger(value, integer))
     {
-        return new RedisObject{
-            OBJ_STRING,
-            ENC_INT,
-            new long long(integer)};
+        return makeObject(OBJ_STRING, ENC_INT, new long long(integer));
     }
 
-    return new RedisObject{
-        OBJ_STRING,
-        ENC_RAW,
-        sdsnewlen(value.data(), value.size())};
+    return makeObject(OBJ_STRING, ENC_RAW, sdsnewlen(value.data(), value.size()));
 }
 
 RedisObject* createListObject()
 {
-    return new RedisObject{
-        OBJ_LIST,
-        ENC_LISTPACK,
-        lpNew()};
+    return makeObject(OBJ_LIST, ENC_LISTPACK, lpNew());
 }
 
 RedisObject* createHashObject()
 {
-    return new RedisObject{
-        OBJ_HASH,
-        ENC_LISTPACK,
-        lpNew()};
+    return makeObject(OBJ_HASH, ENC_LISTPACK, lpNew());
 }
 
 RedisObject* createSetObject()
 {
-    return new RedisObject{
-        OBJ_SET,
-        ENC_INTSET,
-        intsetNew()};
+    return makeObject(OBJ_SET, ENC_INTSET, intsetNew());
 }
 
 RedisObject* createZSetObject()
 {
-    return new RedisObject{
-        OBJ_ZSET,
-        ENC_LISTPACK,
-        lpNew()};
+    return makeObject(OBJ_ZSET, ENC_LISTPACK, lpNew());
 }
 
 void destroyObject(RedisObject* obj)

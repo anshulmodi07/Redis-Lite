@@ -4,21 +4,13 @@ import tempfile
 import textwrap
 from pathlib import Path
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from build_sources import CORE_SOURCES, SERVER_SOURCES
+
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = [
-    ROOT / "parser.cpp",
-    ROOT / "resp.cpp",
-    ROOT / "sds.cpp",
-    ROOT / "object.cpp",
-    ROOT / "cmd_string.cpp",
-    ROOT / "cmd_expire.cpp",
-    ROOT / "cmd_hash.cpp",
-    ROOT / "cmd_list.cpp",
-    ROOT / "cmd_set.cpp",
-    ROOT / "cmd_zset.cpp",
-    ROOT / "skiplist.cpp",
-]
+SOURCES = CORE_SOURCES
 
 
 def run_probe():
@@ -27,24 +19,26 @@ def run_probe():
         src = Path(tmp) / "probe.cpp"
         out = Path(tmp) / "probe"
         src.write_text(textwrap.dedent("""
-            #include "parser.h"
+            #include "dispatch_probe.h"
             #include <cassert>
+            #include <vector>
 
             int main() {
-                RedisDb db;
-                assert(dispatch({"SET", "live", "ok"}, db) == "+OK\\r\\n");
+                std::vector<RedisDb> dbs(1);
+                RedisDb& db = dbs[0];
+                assert(dispatchProbe(dbs, {"SET", "live", "ok"}) == "+OK\\r\\n");
                 db.expires["live"] = nowMs() - 1;
-                assert(dispatch({"GET", "live"}, db) == "$-1\\r\\n");
+                assert(dispatchProbe(dbs, {"GET", "live"}) == "$-1\\r\\n");
                 assert(db.data.count("live") == 0);
                 assert(db.expires.count("live") == 0);
 
-                assert(dispatch({"SADD", "s", "a"}, db) == ":1\\r\\n");
+                assert(dispatchProbe(dbs, {"SADD", "s", "a"}) == ":1\\r\\n");
                 db.expires["s"] = nowMs() - 1;
-                assert(dispatch({"SCARD", "s"}, db) == ":0\\r\\n");
+                assert(dispatchProbe(dbs, {"SCARD", "s"}) == ":0\\r\\n");
             }
         """))
         subprocess.run(
-            [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), str(src), *map(str, SOURCES), "-o", str(out)],
+            [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), "-I", str(ROOT / "tests"), str(src), *map(str, SOURCES), "-o", str(out)],
             check=True,
         )
         subprocess.run([str(out)], check=True)
