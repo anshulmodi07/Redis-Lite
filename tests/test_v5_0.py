@@ -6,7 +6,7 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from build_sources import CORE_SOURCES, SERVER_SOURCES
+from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,12 +17,7 @@ PORT = 8080
 
 
 def compile_server():
-    cxx = os.environ.get("CXX", "g++")
-    subprocess.run(
-        [cxx, "-std=c++17", "-Wall", "-Wextra", "-pthread", "-o", str(SERVER_BIN), *map(str, SERVER_SOURCES)],
-        cwd=ROOT,
-        check=True,
-    )
+    compile_binary(SERVER_BIN)
 
 
 def run_probe():

@@ -1,19 +1,22 @@
 #include "commands.h"
 
 #include "cmd_expire.h"
+#include "eviction.h"
 #include "cmd_hash.h"
 #include "cmd_list.h"
 #include "cmd_set.h"
 #include "cmd_string.h"
 #include "cmd_zset.h"
+#include "cluster.h"
 #include "encoding.h"
 #include "aof.h"
 #include "eviction.h"
 #include "multi.h"
 #include "pubsub.h"
 #include "rdb.h"
+#include "replication.h"
+#include "scripting.h"
 #include "object.h"
-#include "rdb.h"
 #include "resp.h"
 
 #include <algorithm>
@@ -563,6 +566,55 @@ string commandBgrewriteAof(CommandContext& ctx, const vector<string>&)
     return encodeSimpleString("Background append only file rewriting started");
 }
 
+string commandInfo(CommandContext& ctx, const vector<string>& argv)
+{
+    string section;
+    if (argv.size() >= 2)
+    {
+        section = argv[1];
+        for (char& ch : section)
+        {
+            ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
+        }
+    }
+
+    string body;
+
+    if (section.empty() || section == "server")
+    {
+        body += "# Server\r\nredis_version:5.0-lite\r\nredis_mode:standalone\r\n";
+        body += "tcp_port:" + to_string(g_server_config.port) + "\r\n";
+    }
+
+    if (section.empty() || section == "replication")
+    {
+        body += replicationInfoSection();
+    }
+
+    if (section.empty() || section == "cluster")
+    {
+        body += clusterInfoSection();
+    }
+
+    if (section.empty() || section == "keyspace")
+    {
+        body += "# Keyspace\r\n";
+        for (size_t i = 0; i < ctx.databases.size(); ++i)
+        {
+            const RedisDb& db = ctx.databases[i];
+            if (db.data.empty() && db.expires.empty())
+            {
+                continue;
+            }
+
+            body += "db" + to_string(i) + ":keys=" + to_string(db.data.size())
+                + ",expires=" + to_string(db.expires.size()) + ",avg_ttl=0\r\n";
+        }
+    }
+
+    return encodeBulkString(body);
+}
+
 void registerUtilityCommands(CommandTable& out)
 {
     add(out, "PING", -1, CMD_READONLY, commandPing);
@@ -584,6 +636,7 @@ void registerUtilityCommands(CommandTable& out)
     add(out, "SAVE", 1, CMD_READONLY, commandSave);
     add(out, "BGSAVE", 1, CMD_READONLY, commandBgsave);
     add(out, "BGREWRITEAOF", 1, CMD_READONLY, commandBgrewriteAof);
+    add(out, "INFO", -1, CMD_READONLY, commandInfo);
 }
 }
 
@@ -598,6 +651,8 @@ void initCommandTable()
     registerSetCommands(table);
     registerZSetCommands(table);
     registerPubsubCommands(table);
+    registerScriptingCommands(table);
+    registerClusterCommands(table);
 }
 
 const CommandTable& commandTable()
@@ -612,6 +667,12 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
         return encodeError("ERR unknown command");
     }
 
+    string repl_reply;
+    if (replicationHandleCommand(ctx.client, argv, repl_reply))
+    {
+        return repl_reply;
+    }
+
     string transaction_reply;
     if (tryTransaction(ctx, argv, transaction_reply))
     {
@@ -621,6 +682,12 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
     if (ctx.client.pubsub_mode && !pubsubAllowsInMode(argv[0]))
     {
         return encodeError("ERR only (P)SUBSCRIBE / (P)UNSUBSCRIBE / PING allowed in subscribed state");
+    }
+
+    const string cluster_err = clusterPreflight(argv);
+    if (!cluster_err.empty())
+    {
+        return cluster_err;
     }
 
     auto it = table.find(argv[0]);
@@ -640,6 +707,12 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
         return wrongArity(argv[0]);
     }
 
+    string readonly_err;
+    if ((cmd.flags & CMD_WRITE) != 0 && !replicationPreflightWrite(ctx.client, readonly_err))
+    {
+        return readonly_err;
+    }
+
     if ((cmd.flags & CMD_WRITE) != 0)
     {
         string oom = ensureMemoryForWrite(ctx.databases);
@@ -650,10 +723,14 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
     }
 
     string result = cmd.func(ctx, argv);
-    if ((cmd.flags & CMD_WRITE) != 0)
+    if ((cmd.flags & CMD_WRITE) != 0 && !ctx.exec_replay)
     {
         notifyWriteKeys(ctx, argv, cmd.flags);
-        aofAppendCommand(argv);
+        if (argv[0] != "EVAL" && argv[0] != "EVALSHA")
+        {
+            aofAppendCommand(argv);
+            replicationFeedWrite(argv);
+        }
     }
 
     return result;
