@@ -283,7 +283,11 @@ void wakeReplicaClient(int fd)
 
     epoll_event event{};
     event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+<<<<<<< HEAD
     if (clientHasPendingWrites(it->second))
+=======
+    if (!it->second.write_buf.empty())
+>>>>>>> 47531e2b4be68a3b819d30db016f0edfaedf772e
     {
         event.events |= EPOLLOUT;
     }
@@ -428,7 +432,11 @@ void replicationFeedWrite(const vector<string>& argv)
         auto it = g_clients->find(entry.first);
         if (it != g_clients->end())
         {
+<<<<<<< HEAD
             clientAppendWrite(it->second, encoded);
+=======
+            it->second.write_buf += encoded;
+>>>>>>> 47531e2b4be68a3b819d30db016f0edfaedf772e
             wakeReplicaClient(entry.first);
         }
     }
