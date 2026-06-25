@@ -123,6 +123,7 @@ void acceptReadyClients(
 
         clients.emplace(client_fd, std::move(client));
         cout << "Client connected\n";
+        ++g_stats.total_connections_received;
     }
 }
 
@@ -272,9 +273,24 @@ int runEventLoop(int server_fd)
     {
         replicationStartReplica(epoll_fd);
     }
+    g_stats.start_time_ms = nowMs();
+    g_stats.last_sample_time_ms = nowMs();
+    g_stats.last_sample_commands = 0;
 
     while (true)
     {
+        long long current_time = nowMs();
+        if (current_time - g_stats.last_sample_time_ms >= 1000)
+        {
+            long long elapsed_ms = current_time - g_stats.last_sample_time_ms;
+            long long commands = g_stats.total_commands_processed - g_stats.last_sample_commands;
+            if (elapsed_ms > 0)
+            {
+                g_stats.ops_per_sec = (commands * 1000) / elapsed_ms;
+            }
+            g_stats.last_sample_time_ms = current_time;
+            g_stats.last_sample_commands = g_stats.total_commands_processed;
+        }
         int ready = epoll_wait(
             epoll_fd,
             events.data(),

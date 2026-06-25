@@ -12,6 +12,20 @@
 constexpr uint32_t CMD_READONLY = 1u;
 constexpr uint32_t CMD_WRITE = 2u;
 
+struct ServerStats
+{
+    long long start_time_ms = 0;
+    long long total_commands_processed = 0;
+    long long total_connections_received = 0;
+    long long ops_per_sec = 0;
+
+    // Internal trackers for computing ops_per_sec
+    long long last_sample_time_ms = 0;
+    long long last_sample_commands = 0;
+};
+
+extern ServerStats g_stats;
+
 struct CommandContext
 {
     Client& client;

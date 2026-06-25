@@ -1,6 +1,6 @@
 # Project Structure
 
-Current version: V11.3
+Current version: V12
 
 ```text
 Redis Lite/
@@ -16,9 +16,11 @@ Redis Lite/
 |-- cluster.cpp                            # hash slots, MOVED, CLUSTER *
 |-- server.cpp / eventloop.cpp             # startup + epoll loop
 |-- third_party/lua-5.1.5/                 # bundled Lua 5.1 sources
+|-- README.md                              # benchmarks & setup guide
 `-- tests/
     |-- build_sources.py                   # compile helper (bundled Lua)
-    |-- test_v11_0.py … test_v11_3.py
+    |-- test_v11_0.py … test_v12.py
+    |-- benchmark.py                       # performance benchmark script
     `-- .build/                            # cached Lua object files
 ```
 
@@ -31,3 +33,5 @@ Redis Lite/
 - `cluster.cpp` — CRC16 slots, `MOVED`, `CLUSTER MYID/MEET/INFO/NODES/SETSLOT`.
 - `rdb.cpp` — `serializeRDB()` / `loadRDBFromBuffer()` for replication transfer.
 - `tests/build_sources.py` — compiles bundled Lua as C and links with the server binary.
+- `docs/design_doc.md` — system architecture details and interview answers.
+- `tests/benchmark.py` — comparative benchmarking runner.
