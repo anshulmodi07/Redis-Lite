@@ -24,8 +24,14 @@
 #include <cctype>
 #include <thread>
 #include <vector>
+#include <sys/utsname.h>
+#include <iomanip>
+#include <sstream>
+#include <fstream>
 
 using namespace std;
+
+ServerStats g_stats;
 
 namespace
 {
@@ -430,6 +436,16 @@ string commandConfig(CommandContext& ctx, const vector<string>& argv)
         }
 
         const string& key = argv[2];
+        if (key == "*")
+        {
+            return encodeArray({
+                "maxmemory", to_string(g_server_config.maxmemory),
+                "maxmemory-policy", evictionPolicyName(g_server_config.maxmemory_policy),
+                "maxmemory-samples", to_string(g_server_config.maxmemory_samples),
+                "appendfsync", aofFsyncPolicyName(g_aof_fsync_policy)
+            });
+        }
+
         if (key == "maxmemory")
         {
             return encodeArray({key, to_string(g_server_config.maxmemory)});
@@ -582,8 +598,74 @@ string commandInfo(CommandContext& ctx, const vector<string>& argv)
 
     if (section.empty() || section == "server")
     {
-        body += "# Server\r\nredis_version:5.0-lite\r\nredis_mode:standalone\r\n";
+        body += "# Server\r\n";
+        body += "redis_version:5.0-lite\r\n";
+        string mode = g_server_config.cluster_enabled ? "cluster" : "standalone";
+        body += "redis_mode:" + mode + "\r\n";
+        body += "os:";
+        utsname name;
+        if (uname(&name) == 0)
+        {
+            body += string(name.sysname) + " " + name.release + " " + name.machine + "\r\n";
+        }
+        else
+        {
+            body += "Linux\r\n";
+        }
         body += "tcp_port:" + to_string(g_server_config.port) + "\r\n";
+        long long uptime_secs = 0;
+        if (g_stats.start_time_ms > 0)
+        {
+            uptime_secs = (nowMs() - g_stats.start_time_ms) / 1000;
+        }
+        body += "uptime_in_seconds:" + to_string(uptime_secs) + "\r\n";
+        body += "uptime_in_days:" + to_string(uptime_secs / 86400) + "\r\n";
+    }
+
+    if (section.empty() || section == "clients")
+    {
+        body += "# Clients\r\n";
+        size_t connected = ctx.clients ? ctx.clients->size() : 0;
+        body += "connected_clients:" + to_string(connected) + "\r\n";
+        body += "blocked_clients:0\r\n";
+    }
+
+    if (section.empty() || section == "memory")
+    {
+        body += "# Memory\r\n";
+        size_t used = estimateServerMemory(ctx.databases);
+        body += "used_memory:" + to_string(used) + "\r\n";
+        
+        size_t rss = 0;
+        ifstream status_file("/proc/self/status");
+        string line;
+        while (getline(status_file, line))
+        {
+            if (line.rfind("VmRSS:", 0) == 0)
+            {
+                stringstream ss(line.substr(6));
+                ss >> rss; // VmRSS is in kB
+                rss *= 1024; // Convert to bytes
+                break;
+            }
+        }
+        double frag_ratio = 1.00;
+        if (used > 0 && rss > 0)
+        {
+            frag_ratio = static_cast<double>(rss) / used;
+        }
+        stringstream frag_ss;
+        frag_ss << fixed << setprecision(2) << frag_ratio;
+        body += "mem_fragmentation_ratio:" + frag_ss.str() + "\r\n";
+    }
+
+    if (section.empty() || section == "stats")
+    {
+        body += "# Stats\r\n";
+        body += "total_commands_processed:" + to_string(g_stats.total_commands_processed) + "\r\n";
+        body += "total_connections_received:" + to_string(g_stats.total_connections_received) + "\r\n";
+        body += "instantaneous_ops_per_sec:" + to_string(g_stats.ops_per_sec) + "\r\n";
+        body += "ops_per_sec:" + to_string(g_stats.ops_per_sec) + "\r\n";
     }
 
     if (section.empty() || section == "replication")
@@ -666,6 +748,8 @@ string executeCommand(CommandContext& ctx, const vector<string>& argv)
     {
         return encodeError("ERR unknown command");
     }
+
+    ++g_stats.total_commands_processed;
 
     string repl_reply;
     if (replicationHandleCommand(ctx.client, argv, repl_reply))
