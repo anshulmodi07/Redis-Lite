@@ -572,9 +572,8 @@ RedisObject* readValue(Reader& r, uint8_t type)
         return nullptr;
     }
 }
-}
 
-bool saveRDB(const string& path, const vector<RedisDb>& databases)
+string buildSnapshot(const vector<RedisDb>& databases)
 {
     Writer w;
     w.bytes("REDIS0011", 9);
@@ -609,20 +608,13 @@ bool saveRDB(const string& path, const vector<RedisDb>& databases)
     }
 
     w.byte(RDB_OPCODE_EOF);
-    uint64_t checksum = crc64(w.buf_.data(), w.buf_.size());
+    const uint64_t checksum = crc64(w.buf_.data(), w.buf_.size());
     w.u64le(checksum);
-    return w.writeFile(path);
+    return string(reinterpret_cast<const char*>(w.buf_.data()), w.buf_.size());
 }
 
-bool loadRDB(const string& path, vector<RedisDb>& databases)
+bool loadSnapshot(const vector<uint8_t>& data, vector<RedisDb>& databases)
 {
-    ifstream in(path, ios::binary);
-    if (!in)
-    {
-        return false;
-    }
-
-    vector<uint8_t> data((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
     if (data.size() < 9 + 8)
     {
         return false;
@@ -635,14 +627,13 @@ bool loadRDB(const string& path, vector<RedisDb>& databases)
 
     uint64_t expected_crc = 0;
     memcpy(&expected_crc, data.data() + data.size() - 8, 8);
-    uint64_t actual_crc = crc64(data.data(), data.size() - 8);
+    const uint64_t actual_crc = crc64(data.data(), data.size() - 8);
     if (expected_crc != actual_crc)
     {
         return false;
     }
 
-    data.resize(data.size() - 8);
-    Reader reader(vector<uint8_t>(data.begin() + 9, data.end()));
+    Reader reader(vector<uint8_t>(data.begin() + 9, data.end() - 8));
     flushAll(databases);
 
     size_t current_db = 0;
@@ -729,6 +720,43 @@ bool loadRDB(const string& path, vector<RedisDb>& databases)
             db.expires.erase(key);
         }
     }
+}
+}
+
+bool saveRDB(const string& path, const vector<RedisDb>& databases)
+{
+    const string snapshot = buildSnapshot(databases);
+    ofstream out(path, ios::binary);
+    if (!out)
+    {
+        return false;
+    }
+
+    out.write(snapshot.data(), static_cast<streamsize>(snapshot.size()));
+    return static_cast<bool>(out);
+}
+
+string serializeRDB(const vector<RedisDb>& databases)
+{
+    return buildSnapshot(databases);
+}
+
+bool loadRDB(const string& path, vector<RedisDb>& databases)
+{
+    ifstream in(path, ios::binary);
+    if (!in)
+    {
+        return false;
+    }
+
+    vector<uint8_t> data((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
+    return loadSnapshot(data, databases);
+}
+
+bool loadRDBFromBuffer(const string& data, vector<RedisDb>& databases)
+{
+    vector<uint8_t> bytes(data.begin(), data.end());
+    return loadSnapshot(bytes, databases);
 }
 
 bool bgsaveInProgress()

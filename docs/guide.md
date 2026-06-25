@@ -2195,7 +2195,7 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V5.0  SDS strings
 [x] V5.1  listpack encoding for small collections
 [x] V5.2  intset encoding for integer sets
-[ ] V5.3  Auto-promotion between encodings (OBJECT ENCODING shows the result)
+[x] V5.3  Auto-promotion between encodings (OBJECT ENCODING shows the result)
 [x] V6.0  Command dispatch table, INFO/CONFIG/KEYS/SCAN/DEBUG commands
 [x] V7.0  maxmemory config + approximated LRU/LFU eviction
 [x] V8.0  RDB snapshot (blocking SAVE)
@@ -2205,10 +2205,10 @@ Own the gap — explain it (no fine-tuned buffer sizes, no jemalloc, no sendfile
 [x] V9.0  Pub/Sub (SUBSCRIBE, PUBLISH, PSUBSCRIBE, channel state machine)
 [x] V10.0 MULTI/EXEC/DISCARD transactions
 [x] V10.1 WATCH optimistic locking
-[ ] V11.0 Pipelining verification + benchmark
-[ ] V11.1 Lua scripting (EVAL/EVALSHA, redis.call())
-[ ] V11.2 Primary-Replica replication (PSYNC, RDB transfer, write stream)
-[ ] V11.3 Cluster (hash slots, MOVED/ASK redirects, gossip) ← optional capstone
+[x] V11.0 Pipelining verification + benchmark
+[x] V11.1 Lua scripting (EVAL/EVALSHA, redis.call())
+[x] V11.2 Primary-Replica replication (PSYNC, RDB transfer, write stream)
+[x] V11.3 Cluster (hash slots, MOVED/ASK redirects, gossip) ← optional capstone
 [ ] V12   INFO/CONFIG commands, benchmarks, architecture diagram, design doc
 ```
 

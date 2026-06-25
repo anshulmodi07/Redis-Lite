@@ -1,5 +1,7 @@
 #include "eventloop.h"
 
+#include "eviction.h"
+
 #include <cerrno>
 #include <csignal>
 #include <cstring>
@@ -12,14 +14,20 @@ using namespace std;
 
 namespace
 {
-constexpr int PORT = 8080;
+constexpr int DEFAULT_PORT = 8080;
 }
 
-int main()
+int main(int argc, char** argv)
 {
     signal(SIGPIPE, SIG_IGN);
-    cout << "Server Starting...\n";
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0); // Create a TCP socket
+    if (!parseServerArgs(argc, argv))
+    {
+        return 1;
+    }
+
+    const int port = g_server_config.port > 0 ? g_server_config.port : DEFAULT_PORT;
+    cout << "Server Starting on port " << port << "...\n";
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0)
     {
         cout << "Socket creation failed\n";
@@ -39,15 +47,12 @@ int main()
         return 1;
     }
 
-    sockaddr_in server_addr;          // A structure that stores the socket's address information (IP, port,Network type)?
-    server_addr.sin_family = AF_INET; // IPv4
-    server_addr.sin_port = htons(PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY; // Accept connections on this machine
+    sockaddr_in server_addr{};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(static_cast<uint16_t>(port));
+    server_addr.sin_addr.s_addr = INADDR_ANY;
 
-    // Take this phone (server_fd) and assign it Port 8080
-    if (bind(server_fd,
-             (sockaddr *)&server_addr,
-             sizeof(server_addr)) < 0)
+    if (bind(server_fd, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) < 0)
     {
         cout << "Bind Failed\n";
         close(server_fd);
@@ -55,15 +60,14 @@ int main()
     }
     cout << "Bind Successful\n";
 
-    // Listen for connections
-    if (listen(server_fd, 5) < 0) // Maximum 5 connection requests can wait in queue.
+    if (listen(server_fd, 5) < 0)
     {
         cout << "Listen Failed\n";
         close(server_fd);
         return 1;
     }
     cout << "Listening...\n";
-    int result = runEventLoop(server_fd);
+    const int result = runEventLoop(server_fd);
     close(server_fd);
     return result;
 }

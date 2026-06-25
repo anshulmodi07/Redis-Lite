@@ -1,6 +1,7 @@
 #include "eventloop.h"
 
 #include "client.h"
+#include "cluster.h"
 #include "commands.h"
 #include "db.h"
 #include "parser.h"
@@ -8,7 +9,10 @@
 #include "pubsub.h"
 #include "multi.h"
 #include "rdb.h"
+#include "replication.h"
 #include "resp.h"
+#include "scripting.h"
+#include "eviction.h"
 
 #include <cerrno>
 #include <cstdint>
@@ -223,6 +227,9 @@ void clientWritePending(int epoll_fd, Client& client)
 int runEventLoop(int server_fd)
 {
     initCommandTable();
+    initScripting();
+    initReplication();
+    initCluster();
     aofInit();
 
     if (ifstream(g_aof_filename).good())
@@ -260,6 +267,12 @@ int runEventLoop(int server_fd)
     unordered_map<int, Client> clients;
     vector<epoll_event> events(MAX_EVENTS);
 
+    replicationSetContext(&databases, &clients, epoll_fd);
+    if (g_server_config.readonly_replica)
+    {
+        replicationStartReplica(epoll_fd);
+    }
+
     while (true)
     {
         int ready = epoll_wait(
@@ -287,12 +300,23 @@ int runEventLoop(int server_fd)
         checkBgsaveChild();
         checkBgrewriteChild();
         aofPeriodic(EPOLL_WAIT_TIMEOUT_MS);
+        replicationPeriodic(epoll_fd);
+        clusterPeriodic();
 
         vector<int> to_close;
         for (int i = 0; i < ready; ++i)
         {
             int fd = events[static_cast<size_t>(i)].data.fd;
             uint32_t fired = events[static_cast<size_t>(i)].events;
+
+            if (replicationIsMasterLink(fd))
+            {
+                if (fired & (EPOLLIN | EPOLLERR | EPOLLHUP))
+                {
+                    replicationHandleMasterEvent(epoll_fd);
+                }
+                continue;
+            }
 
             if (fd == server_fd)
             {

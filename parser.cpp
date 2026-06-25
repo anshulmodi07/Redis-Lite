@@ -121,6 +121,27 @@ vector<size_t> keyPositions(const vector<string>& argv)
             positions.push_back(2);
         }
     }
+    else if (cmd == "EVAL" || cmd == "EVALSHA")
+    {
+        if (argv.size() > 2)
+        {
+            try
+            {
+                const long long numkeys = stoll(argv[2]);
+                for (long long i = 0; i < numkeys; ++i)
+                {
+                    const size_t pos = 3 + static_cast<size_t>(i);
+                    if (pos < argv.size())
+                    {
+                        positions.push_back(pos);
+                    }
+                }
+            }
+            catch (...)
+            {
+            }
+        }
+    }
     else if (cmd == "EXPIRE" || cmd == "PEXPIRE" || cmd == "EXPIREAT" || cmd == "PEXPIREAT"
         || cmd == "TTL" || cmd == "PTTL" || cmd == "PERSIST")
     {
