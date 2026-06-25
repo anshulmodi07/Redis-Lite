@@ -17,6 +17,12 @@ struct Client
     std::unordered_set<std::string> watches;
     std::vector<std::vector<std::string>> queued_commands;
     RespParser parser;
-    std::string write_buf;
+    std::vector<std::string> pending_writes;
+    size_t write_chunk_idx = 0;
+    size_t write_chunk_off = 0;
     bool closing = false;
 };
+
+bool clientHasPendingWrites(const Client& client);
+void clientAppendWrite(Client& client, std::string data);
+bool clientFlush(Client& client);

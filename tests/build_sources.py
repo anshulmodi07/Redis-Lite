@@ -71,6 +71,7 @@ LUA_SOURCES = [
 
 SERVER_SOURCES = CORE_SOURCES + LUA_SOURCES + [
     ROOT / "server.cpp",
+    ROOT / "client.cpp",
     ROOT / "eventloop.cpp",
 ]
 

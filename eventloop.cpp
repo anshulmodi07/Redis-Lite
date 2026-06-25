@@ -63,7 +63,7 @@ bool updateClientEvents(int epoll_fd, const Client& client)
 {
     epoll_event event;
     event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-    if (!client.write_buf.empty())
+    if (clientHasPendingWrites(client))
     {
         event.events |= EPOLLOUT;
     }
@@ -127,18 +127,53 @@ void acceptReadyClients(
     }
 }
 
-void queueParsedReplies(Client& client, unordered_map<int, Client>& clients, int epoll_fd)
+bool flushClient(Client& client)
+{
+    if (!clientFlush(client))
+    {
+        return false;
+    }
+
+    return !client.closing || clientHasPendingWrites(client);
+}
+
+bool queueParsedReplies(Client& client, unordered_map<int, Client>& clients, int epoll_fd)
 {
     vector<string> argv;
 
     while (client.parser.tryParse(argv))
     {
-        client.write_buf += dispatch(client, databases, argv, &clients, epoll_fd);
+        clientAppendWrite(client, dispatch(client, databases, argv, &clients, epoll_fd));
     }
+
+    if (!clientHasPendingWrites(client))
+    {
+        return true;
+    }
+
+    if (!clientFlush(client))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 bool readClient(Client& client, unordered_map<int, Client>& clients, int epoll_fd)
 {
+    if (clientHasPendingWrites(client))
+    {
+        if (!clientFlush(client))
+        {
+            return false;
+        }
+
+        if (clientHasPendingWrites(client))
+        {
+            return true;
+        }
+    }
+
     char buffer[BUFFER_SIZE];
 
     while (true)
@@ -150,19 +185,27 @@ bool readClient(Client& client, unordered_map<int, Client>& clients, int epoll_f
 
             if (client.parser.bufferedSize() > MAX_REQUEST_BUFFER_SIZE)
             {
-                client.write_buf += encodeError("ERR request too large");
+                clientAppendWrite(client, encodeError("ERR request too large"));
                 client.closing = true;
                 return true;
             }
 
             try
             {
-                queueParsedReplies(client, clients, epoll_fd);
+                if (!queueParsedReplies(client, clients, epoll_fd))
+                {
+                    return false;
+                }
             }
             catch (const invalid_argument& err)
             {
-                client.write_buf += encodeError(string("ERR ") + err.what());
+                clientAppendWrite(client, encodeError(string("ERR ") + err.what()));
                 client.closing = true;
+                return true;
+            }
+
+            if (clientHasPendingWrites(client))
+            {
                 return true;
             }
 
@@ -172,7 +215,7 @@ bool readClient(Client& client, unordered_map<int, Client>& clients, int epoll_f
         if (bytes == 0)
         {
             client.closing = true;
-            return !client.write_buf.empty();
+            return clientHasPendingWrites(client);
         }
 
         if (wouldBlock())
@@ -183,40 +226,13 @@ bool readClient(Client& client, unordered_map<int, Client>& clients, int epoll_f
         return false;
     }
 }
-
-bool flushClient(Client& client)
-{
-    while (!client.write_buf.empty())
-    {
-        ssize_t sent = send(
-            client.fd,
-            client.write_buf.data(),
-            client.write_buf.size(),
-            0);
-
-        if (sent > 0)
-        {
-            client.write_buf.erase(0, static_cast<size_t>(sent));
-            continue;
-        }
-
-        if (sent < 0 && wouldBlock())
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    return !client.closing;
-}
 }
 
 void clientWritePending(int epoll_fd, Client& client)
 {
     epoll_event event;
     event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-    if (!client.write_buf.empty())
+    if (clientHasPendingWrites(client))
     {
         event.events |= EPOLLOUT;
     }
@@ -357,22 +373,22 @@ int runEventLoop(int server_fd)
                 keep_open = false;
             }
 
-            if (keep_open && (fired & EPOLLIN))
-            {
-                keep_open = readClient(client, clients, epoll_fd);
-            }
-
             if (keep_open && (fired & EPOLLOUT))
             {
                 keep_open = flushClient(client);
             }
 
-            if (keep_open && (fired & EPOLLHUP) && client.write_buf.empty())
+            if (keep_open && (fired & EPOLLIN))
+            {
+                keep_open = readClient(client, clients, epoll_fd);
+            }
+
+            if (keep_open && (fired & EPOLLHUP) && !clientHasPendingWrites(client))
             {
                 keep_open = false;
             }
 
-            if (keep_open && client.closing && client.write_buf.empty())
+            if (keep_open && client.closing && !clientHasPendingWrites(client))
             {
                 keep_open = false;
             }

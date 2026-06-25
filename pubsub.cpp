@@ -82,7 +82,7 @@ void pushToClient(CommandContext& ctx, int fd, const string& frame)
         return;
     }
 
-    it->second.write_buf += frame;
+    clientAppendWrite(it->second, frame);
     if (ctx.epoll_fd >= 0)
     {
         clientWritePending(ctx.epoll_fd, it->second);
