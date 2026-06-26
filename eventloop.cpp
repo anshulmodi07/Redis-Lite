@@ -44,6 +44,7 @@ constexpr size_t DB_COUNT = 16;
 vector<RedisDb> databases(DB_COUNT);
 
 // Fair write scheduling structures
+Client* fast_clients[65536] = {nullptr};
 std::deque<int> write_ready;
 std::unordered_set<int> in_write_ready;
 
@@ -108,6 +109,10 @@ void closeClient(int epoll_fd, unordered_map<int, Client>& clients, int fd)
     close(fd);
     clients.erase(fd);
     dequeueWrite(fd);
+    if (fd >= 0 && fd < 65536)
+    {
+        fast_clients[fd] = nullptr;
+    }
 }
 
 bool wouldBlock()
@@ -147,6 +152,16 @@ void acceptReadyClients(
             cout << "setsockopt(TCP_NODELAY) failed on client: " << strerror(errno) << "\n";
         }
 
+        int sndbuf = 131072; // 128 KB
+        if (setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf)) < 0)
+        {
+            cout << "setsockopt(SO_SNDBUF) failed: " << strerror(errno) << "\n";
+        }
+        if (setsockopt(client_fd, SOL_SOCKET, SO_RCVBUF, &sndbuf, sizeof(sndbuf)) < 0)
+        {
+            cout << "setsockopt(SO_RCVBUF) failed: " << strerror(errno) << "\n";
+        }
+
         Client client;
         client.fd = client_fd;
         if (!addToEpoll(epoll_fd, client_fd, EPOLLIN | EPOLLERR | EPOLLHUP))
@@ -156,7 +171,11 @@ void acceptReadyClients(
             continue;
         }
 
-        clients.emplace(client_fd, std::move(client));
+        auto emplace_result = clients.emplace(client_fd, std::move(client));
+        if (client_fd >= 0 && client_fd < 65536)
+        {
+            fast_clients[client_fd] = &emplace_result.first->second;
+        }
         cout << "Client connected\n";
         ++g_stats.total_connections_received;
     }
@@ -416,13 +435,13 @@ int runEventLoop(int server_fd)
                 continue;
             }
 
-            auto it = clients.find(fd);
-            if (it == clients.end())
+            Client* client_ptr = (fd >= 0 && fd < 65536) ? fast_clients[fd] : nullptr;
+            if (client_ptr == nullptr)
             {
                 continue;
             }
 
-            Client& client = it->second;
+            Client& client = *client_ptr;
             bool keep_open = true;
 
             if (fired & EPOLLERR)
@@ -469,13 +488,13 @@ int runEventLoop(int server_fd)
             write_ready.pop_front();
             in_write_ready.erase(fd);
 
-            auto it = clients.find(fd);
-            if (it == clients.end())
+            Client* client_ptr = (fd >= 0 && fd < 65536) ? fast_clients[fd] : nullptr;
+            if (client_ptr == nullptr)
             {
                 continue;
             }
 
-            Client& client = it->second;
+            Client& client = *client_ptr;
             if (client.write_buf.empty())
             {
                 if (client.closing)

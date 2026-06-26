@@ -12,6 +12,7 @@ public:
 
 private:
     std::string buffer_;
+    size_t head_ = 0;
 };
 
 std::string encodeSimpleString(const std::string& value);

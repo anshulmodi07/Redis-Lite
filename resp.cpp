@@ -114,11 +114,12 @@ bool parseBulkStringAt(
 
 bool parseArrayAt(
     const string& buffer,
+    size_t pos,
     vector<string>& out,
     size_t& next)
 {
     string header;
-    if (!readLineAt(buffer, 0, header, next))
+    if (!readLineAt(buffer, pos, header, next))
     {
         return false;
     }
@@ -157,11 +158,12 @@ bool parseArrayAt(
 
 bool parseInlineAt(
     const string& buffer,
+    size_t pos,
     vector<string>& out,
     size_t& next)
 {
     string line;
-    if (!readLineAt(buffer, 0, line, next))
+    if (!readLineAt(buffer, pos, line, next))
     {
         return false;
     }
@@ -178,22 +180,22 @@ void RespParser::feed(const char* data, size_t len)
 
 bool RespParser::tryParse(vector<string>& out)
 {
-    if (buffer_.empty())
+    if (buffer_.empty() || head_ == buffer_.size())
     {
         return false;
     }
 
     vector<string> parsed;
-    size_t next = 0;
+    size_t next = head_;
     bool complete = false;
 
-    if (buffer_[0] == '*')
+    if (buffer_[head_] == '*')
     {
-        complete = parseArrayAt(buffer_, parsed, next);
+        complete = parseArrayAt(buffer_, head_, parsed, next);
     }
     else
     {
-        complete = parseInlineAt(buffer_, parsed, next);
+        complete = parseInlineAt(buffer_, head_, parsed, next);
     }
 
     if (!complete)
@@ -201,14 +203,25 @@ bool RespParser::tryParse(vector<string>& out)
         return false;
     }
 
-    buffer_.erase(0, next);
+    head_ = next;
+    if (head_ == buffer_.size())
+    {
+        buffer_.clear();
+        head_ = 0;
+    }
+    else if (head_ > 65536 && head_ > buffer_.size() / 2)
+    {
+        buffer_.erase(0, head_);
+        head_ = 0;
+    }
+
     out = parsed;
     return true;
 }
 
 size_t RespParser::bufferedSize() const
 {
-    return buffer_.size();
+    return buffer_.size() - head_;
 }
 
 string encodeSimpleString(const string& value)
