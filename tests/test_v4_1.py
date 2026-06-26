@@ -6,7 +6,7 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES
+from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES, LUA_SOURCES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,9 +37,10 @@ def run_probe():
                 assert(dispatchProbe(dbs, {"SCARD", "s"}) == ":0\\r\\n");
             }
         """))
-        subprocess.run(
-            [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), "-I", str(ROOT / "tests"), str(src), *map(str, SOURCES), "-o", str(out)],
-            check=True,
+        compile_binary(
+            out,
+            sources=[src] + SOURCES + LUA_SOURCES,
+            extra_args=["-I", str(ROOT), "-I", str(ROOT / "tests")]
         )
         subprocess.run([str(out)], check=True)
 

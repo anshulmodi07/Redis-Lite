@@ -82,11 +82,53 @@ def _lua_object_path(source: Path) -> Path:
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     return BUILD_DIR / (source.name + ".o")
 
+LUA_OBJECTS = [_lua_object_path(source) for source in LUA_SOURCES]
+
 
 def compile_binary(out_path, sources=None, extra_args=None):
+    out_path = Path(out_path)
+    sources = sources or SERVER_SOURCES
+    
+    # Check if target is already up-to-date to avoid expensive recompilation
+    if out_path.exists():
+        max_mtime = 0.0
+        for source in sources:
+            if source.exists():
+                max_mtime = max(max_mtime, source.stat().st_mtime)
+        for header in ROOT.glob("*.h"):
+            max_mtime = max(max_mtime, header.stat().st_mtime)
+            
+        if out_path.stat().st_mtime > max_mtime:
+            # Already compiled and up-to-date!
+            return
+
+    # If it is the default build, compile to a shared binary first
+    if sources == SERVER_SOURCES and not extra_args:
+        shared_bin = BUILD_DIR / "server_shared_bin"
+        shared_up_to_date = False
+        if shared_bin.exists():
+            max_mtime = 0.0
+            for source in sources:
+                if source.exists():
+                    max_mtime = max(max_mtime, source.stat().st_mtime)
+            for header in ROOT.glob("*.h"):
+                max_mtime = max(max_mtime, header.stat().st_mtime)
+            if shared_bin.stat().st_mtime > max_mtime:
+                shared_up_to_date = True
+        
+        if not shared_up_to_date:
+            print(f"Compiling shared binary: {shared_bin}...", flush=True)
+            _compile_to_path(shared_bin, sources, extra_args)
+            
+        import shutil
+        shutil.copy2(shared_bin, out_path)
+        return
+
+    _compile_to_path(out_path, sources, extra_args)
+
+def _compile_to_path(out_path, sources, extra_args):
     cxx = os.environ.get("CXX", "g++")
     cc = os.environ.get("CC", "gcc")
-    sources = sources or SERVER_SOURCES
     extra = extra_args or []
 
     cxx_sources = []
@@ -134,3 +176,4 @@ def compile_binary(out_path, sources=None, extra_args=None):
         cwd=ROOT,
         check=True,
     )
+

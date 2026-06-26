@@ -41,7 +41,7 @@ def compile_metadata_probe():
                 assert(nowMs() >= first);
             }
         """))
-        subprocess.run([cxx, "-std=c++17", "-I", str(ROOT), str(src), "-o", str(out)], check=True)
+        subprocess.run([cxx, "-std=c++17", *map(str, COMPILE_FLAGS), "-I", str(ROOT), str(src), "-o", str(out)], check=True)
         subprocess.run([str(out)], check=True)
 
 

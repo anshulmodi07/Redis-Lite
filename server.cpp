@@ -7,6 +7,7 @@
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -19,6 +20,8 @@ constexpr int DEFAULT_PORT = 8080;
 
 int main(int argc, char** argv)
 {
+    std::setvbuf(stdout, NULL, _IONBF, 0);
+    std::setvbuf(stderr, NULL, _IONBF, 0);
     signal(SIGPIPE, SIG_IGN);
     if (!parseServerArgs(argc, argv))
     {
@@ -47,6 +50,19 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    int flag = 1;
+    if (setsockopt(
+            server_fd,
+            IPPROTO_TCP,
+            TCP_NODELAY,
+            &flag,
+            sizeof(flag)) < 0)
+    {
+        cout << "setsockopt(TCP_NODELAY) failed: " << strerror(errno) << "\n";
+        close(server_fd);
+        return 1;
+    }
+
     sockaddr_in server_addr{};
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(static_cast<uint16_t>(port));
@@ -60,7 +76,7 @@ int main(int argc, char** argv)
     }
     cout << "Bind Successful\n";
 
-    if (listen(server_fd, 5) < 0)
+    if (listen(server_fd, 4096) < 0)
     {
         cout << "Listen Failed\n";
         close(server_fd);

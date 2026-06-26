@@ -19,3 +19,4 @@ void replicationFeedWrite(const std::vector<std::string>& argv);
 void replicationHandleMasterEvent(int epoll_fd);
 std::string replicationInfoSection();
 bool replicationIsMasterLink(int fd);
+

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES
+from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES, LUA_SOURCES
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_BIN = ROOT / "tests" / "server_v8_0_bin"
@@ -23,9 +23,10 @@ def compile_server():
 def compile_probe():
     cxx = os.environ.get("CXX", "g++")
     probe = ROOT / "tests" / "probe_v8_0.cpp"
-    subprocess.run(
-        [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), str(probe), *map(str, CORE_SOURCES), "-o", str(PROBE_BIN)],
-        check=True,
+    compile_binary(
+        PROBE_BIN,
+        sources=[probe] + CORE_SOURCES + LUA_SOURCES,
+        extra_args=["-I", str(ROOT)]
     )
 
 

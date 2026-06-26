@@ -15,11 +15,24 @@ private:
 };
 
 std::string encodeSimpleString(const std::string& value);
-std::string encodeOK();
+const std::string& encodeOK();
 std::string encodeError(const std::string& msg);
 std::string encodeInteger(long long value);
 std::string encodeBulkString(const std::string& value);
-std::string encodeNullBulk();
+const std::string& encodeNullBulk();
 std::string encodeArray(const std::vector<std::string>& items);
 std::string encodeRespArray(const std::vector<std::string>& replies);
-std::string encodeNullArray();
+const std::string& encodeNullArray();
+
+namespace Resp
+{
+void init();
+extern const std::string OK;
+extern const std::string PONG;
+extern const std::string NULL_BULK;
+extern const std::string INT_0;
+extern const std::string INT_1;
+extern const std::string QUEUED;
+extern const std::string NULL_ARRAY;
+extern std::string INTS[10000];
+}

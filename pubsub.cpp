@@ -3,6 +3,8 @@
 #include "eventloop.h"
 #include "resp.h"
 
+#include <sys/epoll.h>
+
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -85,7 +87,17 @@ void pushToClient(CommandContext& ctx, int fd, const string& frame)
     it->second.write_buf += frame;
     if (ctx.epoll_fd >= 0)
     {
-        clientWritePending(ctx.epoll_fd, it->second);
+        if (g_client_write_pending_cb != nullptr)
+        {
+            g_client_write_pending_cb(ctx.epoll_fd, it->second);
+        }
+        else
+        {
+            epoll_event event{};
+            event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLOUT;
+            event.data.fd = it->second.fd;
+            epoll_ctl(ctx.epoll_fd, EPOLL_CTL_MOD, it->second.fd, &event);
+        }
     }
 }
 

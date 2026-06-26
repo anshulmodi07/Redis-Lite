@@ -23,22 +23,50 @@
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <deque>
+#include <unordered_set>
 
 using namespace std;
 
 namespace
 {
-constexpr size_t BUFFER_SIZE = 1024;
 constexpr size_t MAX_REQUEST_BUFFER_SIZE = 4096;
 constexpr int MAX_EVENTS = 64;
 constexpr int EPOLL_WAIT_TIMEOUT_MS = 100;
 constexpr size_t DB_COUNT = 16;
 
 vector<RedisDb> databases(DB_COUNT);
+
+// Fair write scheduling structures
+std::deque<int> write_ready;
+std::unordered_set<int> in_write_ready;
+
+void enqueueWrite(int fd)
+{
+    if (in_write_ready.insert(fd).second)
+    {
+        write_ready.push_back(fd);
+    }
+}
+
+void dequeueWrite(int fd)
+{
+    in_write_ready.erase(fd);
+    for (auto it = write_ready.begin(); it != write_ready.end(); ++it)
+    {
+        if (*it == fd)
+        {
+            write_ready.erase(it);
+            break;
+        }
+    }
+}
 
 bool setNonBlocking(int fd)
 {
@@ -79,6 +107,7 @@ void closeClient(int epoll_fd, unordered_map<int, Client>& clients, int fd)
     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
     close(fd);
     clients.erase(fd);
+    dequeueWrite(fd);
 }
 
 bool wouldBlock()
@@ -112,6 +141,12 @@ void acceptReadyClients(
             continue;
         }
 
+        int flag = 1;
+        if (setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag)) < 0)
+        {
+            cout << "setsockopt(TCP_NODELAY) failed on client: " << strerror(errno) << "\n";
+        }
+
         Client client;
         client.fd = client_fd;
         if (!addToEpoll(epoll_fd, client_fd, EPOLLIN | EPOLLERR | EPOLLHUP))
@@ -139,81 +174,118 @@ void queueParsedReplies(Client& client, unordered_map<int, Client>& clients, int
 
 bool readClient(Client& client, unordered_map<int, Client>& clients, int epoll_fd)
 {
-    char buffer[BUFFER_SIZE];
-
-    while (true)
+    char buffer[65536];
+    ssize_t bytes = recv(client.fd, buffer, sizeof(buffer), 0);
+    if (bytes > 0)
     {
-        ssize_t bytes = recv(client.fd, buffer, sizeof(buffer), 0);
-        if (bytes > 0)
+        client.parser.feed(buffer, static_cast<size_t>(bytes));
+
+        if (client.parser.bufferedSize() > MAX_REQUEST_BUFFER_SIZE)
         {
-            client.parser.feed(buffer, static_cast<size_t>(bytes));
-
-            if (client.parser.bufferedSize() > MAX_REQUEST_BUFFER_SIZE)
-            {
-                client.write_buf += encodeError("ERR request too large");
-                client.closing = true;
-                return true;
-            }
-
-            try
-            {
-                queueParsedReplies(client, clients, epoll_fd);
-            }
-            catch (const invalid_argument& err)
-            {
-                client.write_buf += encodeError(string("ERR ") + err.what());
-                client.closing = true;
-                return true;
-            }
-
-            continue;
-        }
-
-        if (bytes == 0)
-        {
+            client.write_buf += encodeError("ERR request too large");
             client.closing = true;
+            // Attempt inline write
+            ssize_t sent = send(client.fd, client.write_buf.data(), client.write_buf.size(), 0);
+            if (sent > 0)
+            {
+                client.write_buf.consume(sent);
+            }
+            if (!client.write_buf.empty())
+            {
+                enqueueWrite(client.fd);
+            }
             return !client.write_buf.empty();
         }
 
-        if (wouldBlock())
+        try
         {
-            return true;
+            queueParsedReplies(client, clients, epoll_fd);
+            aofFlush();
+        }
+        catch (const invalid_argument& err)
+        {
+            client.write_buf += encodeError(string("ERR ") + err.what());
+            client.closing = true;
+            // Attempt inline write
+            ssize_t sent = send(client.fd, client.write_buf.data(), client.write_buf.size(), 0);
+            if (sent > 0)
+            {
+                client.write_buf.consume(sent);
+            }
+            if (!client.write_buf.empty())
+            {
+                enqueueWrite(client.fd);
+            }
+            return !client.write_buf.empty();
         }
 
-        return false;
-    }
-}
+        // Attempt inline write
+        if (!client.write_buf.empty())
+        {
+            ssize_t sent = send(client.fd, client.write_buf.data(), client.write_buf.size(), 0);
+            if (sent > 0)
+            {
+                client.write_buf.consume(sent);
+            }
+            else if (sent < 0 && !wouldBlock())
+            {
+                return false; // triggers closeClient in runEventLoop
+            }
 
-bool flushClient(Client& client)
-{
-    while (!client.write_buf.empty())
+            if (!client.write_buf.empty())
+            {
+                enqueueWrite(client.fd);
+            }
+        }
+
+        if (client.closing && client.write_buf.empty())
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    if (bytes == 0)
     {
-        ssize_t sent = send(
-            client.fd,
-            client.write_buf.data(),
-            client.write_buf.size(),
-            0);
-
-        if (sent > 0)
+        client.closing = true;
+        // Attempt inline write
+        if (!client.write_buf.empty())
         {
-            client.write_buf.erase(0, static_cast<size_t>(sent));
-            continue;
+            ssize_t sent = send(client.fd, client.write_buf.data(), client.write_buf.size(), 0);
+            if (sent > 0)
+            {
+                client.write_buf.consume(sent);
+            }
         }
-
-        if (sent < 0 && wouldBlock())
-        {
-            return true;
-        }
-
-        return false;
+        return !client.write_buf.empty();
     }
 
-    return !client.closing;
+    if (wouldBlock())
+    {
+        return true;
+    }
+
+    return false;
 }
 }
 
 void clientWritePending(int epoll_fd, Client& client)
 {
+    if (!client.write_buf.empty())
+    {
+        ssize_t sent = send(client.fd, client.write_buf.data(), client.write_buf.size(), 0);
+        if (sent > 0)
+        {
+            client.write_buf.consume(sent);
+        }
+    }
+
+    if (!client.write_buf.empty())
+    {
+        enqueueWrite(client.fd);
+    }
+
     epoll_event event;
     event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
     if (!client.write_buf.empty())
@@ -227,6 +299,8 @@ void clientWritePending(int epoll_fd, Client& client)
 
 int runEventLoop(int server_fd)
 {
+    g_client_write_pending_cb = clientWritePending;
+    Resp::init();
     initCommandTable();
     initScripting();
     initReplication();
@@ -324,7 +398,6 @@ int runEventLoop(int server_fd)
         {
             int fd = events[static_cast<size_t>(i)].data.fd;
             uint32_t fired = events[static_cast<size_t>(i)].events;
-
             if (replicationIsMasterLink(fd))
             {
                 if (fired & (EPOLLIN | EPOLLERR | EPOLLHUP))
@@ -364,7 +437,7 @@ int runEventLoop(int server_fd)
 
             if (keep_open && (fired & EPOLLOUT))
             {
-                keep_open = flushClient(client);
+                enqueueWrite(fd);
             }
 
             if (keep_open && (fired & EPOLLHUP) && client.write_buf.empty())
@@ -384,6 +457,71 @@ int runEventLoop(int server_fd)
             else if (!updateClientEvents(epoll_fd, client))
             {
                 to_close.push_back(fd);
+            }
+        }
+
+        // --- Round-robin write drain ---
+        constexpr size_t WRITE_BUDGET_BYTES = 16384; // 16 KB per client per tick
+        size_t clients_to_drain = write_ready.size();
+        while (clients_to_drain-- > 0 && !write_ready.empty())
+        {
+            int fd = write_ready.front();
+            write_ready.pop_front();
+            in_write_ready.erase(fd);
+
+            auto it = clients.find(fd);
+            if (it == clients.end())
+            {
+                continue;
+            }
+
+            Client& client = it->second;
+            if (client.write_buf.empty())
+            {
+                if (client.closing)
+                {
+                    to_close.push_back(fd);
+                }
+                else
+                {
+                    updateClientEvents(epoll_fd, client);
+                }
+                continue;
+            }
+
+            size_t to_write = std::min(client.write_buf.size(), WRITE_BUDGET_BYTES);
+            ssize_t n = send(fd, client.write_buf.data(), to_write, 0);
+            bool re_enqueue = false;
+            bool keep_open = true;
+
+            if (n > 0)
+            {
+                client.write_buf.consume(n);
+                if (!client.write_buf.empty() && static_cast<size_t>(n) == to_write)
+                {
+                    re_enqueue = true;
+                }
+            }
+            else if (n < 0 && wouldBlock())
+            {
+                re_enqueue = false;
+            }
+            else
+            {
+                keep_open = false;
+            }
+
+            if (!keep_open || (client.closing && client.write_buf.empty()))
+            {
+                to_close.push_back(fd);
+            }
+            else
+            {
+                if (re_enqueue)
+                {
+                    enqueueWrite(fd);
+                }
+                updateClientEvents(epoll_fd, client);
             }
         }
 

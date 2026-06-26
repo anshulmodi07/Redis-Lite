@@ -2,11 +2,14 @@
 
 #include "aof.h"
 #include "client.h"
+#include "eventloop.h"
 #include "commands.h"
 #include "parser.h"
 #include "rdb.h"
 #include "resp.h"
 #include "eviction.h"
+
+#include <iostream>
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -19,6 +22,7 @@
 #include <unistd.h>
 
 using namespace std;
+
 
 namespace
 {
@@ -123,6 +127,7 @@ bool tryFinishFullSync()
     }
 
     const string snapshot = master_read_buffer.substr(0, full_sync_expected);
+
     if (!loadRDBFromBuffer(snapshot, *g_databases))
     {
         return false;
@@ -281,15 +286,22 @@ void wakeReplicaClient(int fd)
         return;
     }
 
-    epoll_event event{};
-    event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-    if (!it->second.write_buf.empty())
+    if (g_client_write_pending_cb != nullptr)
     {
-        event.events |= EPOLLOUT;
+        g_client_write_pending_cb(g_epoll_fd, it->second);
     }
+    else
+    {
+        epoll_event event{};
+        event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+        if (!it->second.write_buf.empty())
+        {
+            event.events |= EPOLLOUT;
+        }
 
-    event.data.fd = fd;
-    epoll_ctl(g_epoll_fd, EPOLL_CTL_MOD, fd, &event);
+        event.data.fd = fd;
+        epoll_ctl(g_epoll_fd, EPOLL_CTL_MOD, fd, &event);
+    }
 }
 
 void registerMasterLink(int epoll_fd)
@@ -405,6 +417,11 @@ bool replicationHandleCommand(Client& client, const vector<string>& argv, string
 
 bool replicationPreflightWrite(const Client& client, string& err)
 {
+    if (client.fd == -1)
+    {
+        return true;
+    }
+
     if (g_server_config.readonly_replica && !clientIsReplica(client))
     {
         err = encodeError("READONLY You can't write against a read only replica");

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES
+from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES, LUA_SOURCES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,22 +24,10 @@ def run_probe():
     cxx = os.environ.get("CXX", "g++")
     probe_src = ROOT / "tests" / "probe_v5_0.cpp"
     probe_bin = ROOT / "tests" / "probe_v5_0_bin"
-    subprocess.run(
-        [
-            cxx,
-            "-std=c++17",
-            "-Wall",
-            "-Wextra",
-            "-I",
-            str(ROOT),
-            str(probe_src),
-            ROOT / "sds.cpp",
-            ROOT / "object.cpp",
-            ROOT / "skiplist.cpp",
-            "-o",
-            str(probe_bin),
-        ],
-        check=True,
+    compile_binary(
+        probe_bin,
+        sources=[probe_src] + CORE_SOURCES + LUA_SOURCES,
+        extra_args=["-I", str(ROOT)]
     )
     subprocess.run([str(probe_bin)], check=True)
 

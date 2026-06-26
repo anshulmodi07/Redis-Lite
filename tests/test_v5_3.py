@@ -6,7 +6,7 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES
+from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES, LUA_SOURCES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,25 +24,10 @@ def compile_server():
 
 def run_probe():
     cxx = os.environ.get("CXX", "g++")
-    subprocess.run(
-        [
-            cxx,
-            "-std=c++17",
-            "-Wall",
-            "-Wextra",
-            "-I",
-            str(ROOT),
-            str(PROBE_SRC),
-            ROOT / "encoding.cpp",
-            ROOT / "listpack.cpp",
-            ROOT / "intset.cpp",
-            ROOT / "sds.cpp",
-            ROOT / "object.cpp",
-            ROOT / "skiplist.cpp",
-            "-o",
-            str(PROBE_BIN),
-        ],
-        check=True,
+    compile_binary(
+        PROBE_BIN,
+        sources=[PROBE_SRC] + CORE_SOURCES + LUA_SOURCES,
+        extra_args=["-I", str(ROOT)]
     )
     subprocess.run([str(PROBE_BIN)], check=True)
 

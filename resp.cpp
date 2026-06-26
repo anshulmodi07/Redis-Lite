@@ -216,9 +216,9 @@ string encodeSimpleString(const string& value)
     return "+" + value + "\r\n";
 }
 
-string encodeOK()
+const string& encodeOK()
 {
-    return encodeSimpleString("OK");
+    return Resp::OK;
 }
 
 string encodeError(const string& msg)
@@ -228,6 +228,15 @@ string encodeError(const string& msg)
 
 string encodeInteger(long long value)
 {
+    if (value >= 0 && value < 10000)
+    {
+        static bool initialized = []() {
+            Resp::init();
+            return true;
+        }();
+        (void)initialized;
+        return Resp::INTS[value];
+    }
     return ":" + to_string(value) + "\r\n";
 }
 
@@ -236,9 +245,9 @@ string encodeBulkString(const string& value)
     return "$" + to_string(value.size()) + "\r\n" + value + "\r\n";
 }
 
-string encodeNullBulk()
+const string& encodeNullBulk()
 {
-    return "$-1\r\n";
+    return Resp::NULL_BULK;
 }
 
 string encodeArray(const vector<string>& items)
@@ -264,7 +273,27 @@ string encodeRespArray(const vector<string>& replies)
     return response;
 }
 
-string encodeNullArray()
+const string& encodeNullArray()
 {
-    return "*-1\r\n";
+    return Resp::NULL_ARRAY;
+}
+
+namespace Resp
+{
+const std::string OK = "+OK\r\n";
+const std::string PONG = "+PONG\r\n";
+const std::string NULL_BULK = "$-1\r\n";
+const std::string INT_0 = ":0\r\n";
+const std::string INT_1 = ":1\r\n";
+const std::string QUEUED = "+QUEUED\r\n";
+const std::string NULL_ARRAY = "*-1\r\n";
+std::string INTS[10000];
+
+void init()
+{
+    for (int i = 0; i < 10000; ++i)
+    {
+        INTS[i] = ":" + to_string(i) + "\r\n";
+    }
+}
 }

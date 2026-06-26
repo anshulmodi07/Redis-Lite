@@ -6,7 +6,7 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES
+from build_sources import compile_binary, COMPILE_FLAGS, CORE_SOURCES, SERVER_SOURCES, LUA_SOURCES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,9 +37,10 @@ def run_probe():
                 destroyObject(db.data["live"]);
             }
         """))
-        subprocess.run(
-            [cxx, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT), str(src), str(ROOT / "sds.cpp"), str(ROOT / "object.cpp"), str(ROOT / "skiplist.cpp"), "-o", str(out)],
-            check=True,
+        compile_binary(
+            out,
+            sources=[src] + CORE_SOURCES + LUA_SOURCES,
+            extra_args=["-I", str(ROOT)]
         )
         subprocess.run([str(out)], check=True)
 
