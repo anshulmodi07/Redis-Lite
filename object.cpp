@@ -12,9 +12,38 @@ using namespace std;
 
 namespace
 {
+std::vector<RedisObject*> object_pools[5];
+
+RedisObject* allocObjectShell(ObjectType type)
+{
+    auto& pool = object_pools[static_cast<size_t>(type)];
+    if (!pool.empty())
+    {
+        RedisObject* obj = pool.back();
+        pool.pop_back();
+        return obj;
+    }
+
+    return new RedisObject{};
+}
+
+void releaseObjectShell(RedisObject* obj)
+{
+    if (obj == nullptr)
+    {
+        return;
+    }
+
+    object_pools[static_cast<size_t>(obj->type)].push_back(obj);
+}
+
 RedisObject* makeObject(ObjectType type, ObjectEncoding encoding, void* ptr)
 {
-    auto* obj = new RedisObject{type, encoding, ptr};
+    RedisObject* obj = allocObjectShell(type);
+    obj->type = type;
+    obj->encoding = encoding;
+    obj->ptr = ptr;
+    obj->lru = 0;
     touchObject(obj);
     return obj;
 }
@@ -135,7 +164,8 @@ void destroyObject(RedisObject* obj)
         break;
     }
 
-    delete obj;
+    obj->ptr = nullptr;
+    releaseObjectShell(obj);
 }
 
 string objectTypeName(ObjectType type)

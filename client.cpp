@@ -1,69 +1,115 @@
-#include <iostream>
+#include "client.h"
+
+#include <cerrno>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include <sys/uio.h>
 #include <unistd.h>
-#include <cstring>
 
-using namespace std;
-
-int main()
+namespace
 {
-    cout << "Client Starting...\n";
+bool wouldBlock()
+{
+    return errno == EAGAIN || errno == EWOULDBLOCK;
+}
 
-    int client_fd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (client_fd < 0)
+void compactWrites(Client& client)
+{
+    if (client.write_chunk_idx < 32)
     {
-        cout << "Socket Creation Failed\n";
-        return 1;
+        return;
     }
 
-    cout << "Socket Created\n";
+    client.pending_writes.erase(
+        client.pending_writes.begin(),
+        client.pending_writes.begin() + static_cast<std::ptrdiff_t>(client.write_chunk_idx));
+    client.write_chunk_idx = 0;
+}
+}
 
-    sockaddr_in server_addr;
+bool clientHasPendingWrites(const Client& client)
+{
+    return client.write_chunk_idx < client.pending_writes.size();
+}
 
-    server_addr.sin_family = AF_INET;   // Use IPv4
-    server_addr.sin_port = htons(8080); // Server is listening on port 8080
-
-    inet_pton(
-        AF_INET,
-        "127.0.0.1",
-        &server_addr.sin_addr);
-
-    if (connect(
-            client_fd,
-            (sockaddr *)&server_addr,
-            sizeof(server_addr)) < 0)
+void clientAppendWrite(Client& client, std::string data)
+{
+    if (data.empty())
     {
-        cout << "Connection Failed\n";
-        return 1;
+        return;
     }
 
-    cout << "Connected To Server!\n";
-    string msg;
+    client.pending_writes.push_back(std::move(data));
+}
 
-    getline(cin, msg);
-    msg.push_back('\n');
-
-    send(
-        client_fd,
-        msg.c_str(),
-        msg.size(),
-        0);
-    char buffer[1024];
-
-    int bytes = recv(
-        client_fd,
-        buffer,
-        sizeof(buffer),
-        0);
-    if (bytes <= 0)
+void clientAdvanceWrites(Client& client, size_t sent)
+{
+    while (sent > 0 && client.write_chunk_idx < client.pending_writes.size())
     {
-        cout << "Server disconnected\n";
-        return 1;
+        const std::string& chunk = client.pending_writes[client.write_chunk_idx];
+        const size_t remaining = chunk.size() - client.write_chunk_off;
+        if (sent >= remaining)
+        {
+            sent -= remaining;
+            ++client.write_chunk_idx;
+            client.write_chunk_off = 0;
+        }
+        else
+        {
+            client.write_chunk_off += sent;
+            sent = 0;
+        }
     }
-    buffer[bytes] = '\0';
-    cout << buffer << endl;
-    return 0;
+
+    compactWrites(client);
+}
+
+bool clientFlush(Client& client)
+{
+    while (clientHasPendingWrites(client))
+    {
+        iovec iov[64];
+        int iovcnt = 0;
+        size_t idx = client.write_chunk_idx;
+        size_t off = client.write_chunk_off;
+
+        while (idx < client.pending_writes.size() && iovcnt < 64)
+        {
+            const std::string& chunk = client.pending_writes[idx];
+            if (off >= chunk.size())
+            {
+                ++idx;
+                off = 0;
+                continue;
+            }
+
+            iov[iovcnt].iov_base = const_cast<char*>(chunk.data() + off);
+            iov[iovcnt].iov_len = chunk.size() - off;
+            ++iovcnt;
+            off = 0;
+            ++idx;
+        }
+
+        if (iovcnt == 0)
+        {
+            client.write_chunk_idx = client.pending_writes.size();
+            client.write_chunk_off = 0;
+            continue;
+        }
+
+        const ssize_t sent = writev(client.fd, iov, iovcnt);
+        if (sent > 0)
+        {
+            clientAdvanceWrites(client, static_cast<size_t>(sent));
+            continue;
+        }
+
+        if (sent == 0 || (sent < 0 && wouldBlock()))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    return true;
 }
