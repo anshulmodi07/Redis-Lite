@@ -99,6 +99,7 @@ struct Client
     std::vector<std::vector<std::string>> queued_commands;
     RespParser parser;
     WriteBuffer write_buf;
+    std::vector<std::string> argv_cache;
     bool closing = false;
 };
 

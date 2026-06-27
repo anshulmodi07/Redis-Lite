@@ -100,7 +100,7 @@ bool parseBulkStringAt(
         return false;
     }
 
-    out = buffer.substr(next, bulk_len);
+    out.assign(buffer, next, bulk_len);
     next += bulk_len;
 
     if (buffer[next] != '\r' || buffer[next + 1] != '\n')
@@ -115,7 +115,7 @@ bool parseBulkStringAt(
 bool parseArrayAt(
     const string& buffer,
     size_t pos,
-    vector<string>& out,
+    vector<string>& argv,
     size_t& next)
 {
     string header;
@@ -135,24 +135,21 @@ bool parseArrayAt(
         throw invalid_argument("protocol error: null array is not a command");
     }
 
-    vector<string> argv;
-    argv.reserve(static_cast<size_t>(count));
+    size_t num_args = static_cast<size_t>(count);
+    argv.resize(num_args);
 
-    for (long long i = 0; i < count; ++i)
+    for (size_t i = 0; i < num_args; ++i)
     {
-        string arg;
         size_t after_bulk = next;
 
-        if (!parseBulkStringAt(buffer, next, arg, after_bulk))
+        if (!parseBulkStringAt(buffer, next, argv[i], after_bulk))
         {
             return false;
         }
 
-        argv.push_back(arg);
         next = after_bulk;
     }
 
-    out = argv;
     return true;
 }
 
@@ -185,17 +182,16 @@ bool RespParser::tryParse(vector<string>& out)
         return false;
     }
 
-    vector<string> parsed;
     size_t next = head_;
     bool complete = false;
 
     if (buffer_[head_] == '*')
     {
-        complete = parseArrayAt(buffer_, head_, parsed, next);
+        complete = parseArrayAt(buffer_, head_, out, next);
     }
     else
     {
-        complete = parseInlineAt(buffer_, head_, parsed, next);
+        complete = parseInlineAt(buffer_, head_, out, next);
     }
 
     if (!complete)
@@ -215,7 +211,6 @@ bool RespParser::tryParse(vector<string>& out)
         head_ = 0;
     }
 
-    out = parsed;
     return true;
 }
 

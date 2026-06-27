@@ -183,11 +183,9 @@ void acceptReadyClients(
 
 void queueParsedReplies(Client& client, unordered_map<int, Client>& clients, int epoll_fd)
 {
-    vector<string> argv;
-
-    while (client.parser.tryParse(argv))
+    while (client.parser.tryParse(client.argv_cache))
     {
-        client.write_buf += dispatch(client, databases, argv, &clients, epoll_fd);
+        client.write_buf += dispatch(client, databases, client.argv_cache, &clients, epoll_fd);
     }
 }
 
@@ -325,6 +323,12 @@ int runEventLoop(int server_fd)
     initReplication();
     initCluster();
     aofInit();
+
+    for (auto& db : databases)
+    {
+        db.data.reserve(131072);
+        db.expires.reserve(131072);
+    }
 
     if (ifstream(g_aof_filename).good())
     {
