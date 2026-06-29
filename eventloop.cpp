@@ -292,7 +292,7 @@ int runEventLoop(int server_fd) {
   initCluster();
   aofInit();
 
-  if (ifstream(g_aof_filename).good()) {
+  if (g_aof_enabled && ifstream(g_aof_filename).good()) {
     if (!aofLoad(databases)) {
       cout << "Failed to load AOF file: " << g_aof_filename << "\n";
     }

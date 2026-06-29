@@ -442,7 +442,8 @@ string commandConfig(CommandContext& ctx, const vector<string>& argv)
                 "maxmemory", to_string(g_server_config.maxmemory),
                 "maxmemory-policy", evictionPolicyName(g_server_config.maxmemory_policy),
                 "maxmemory-samples", to_string(g_server_config.maxmemory_samples),
-                "appendfsync", aofFsyncPolicyName(g_aof_fsync_policy)
+                "appendfsync", aofFsyncPolicyName(g_aof_fsync_policy),
+                "appendonly", g_aof_enabled ? "yes" : "no"
             });
         }
 
@@ -464,6 +465,11 @@ string commandConfig(CommandContext& ctx, const vector<string>& argv)
         if (key == "appendfsync")
         {
             return encodeArray({key, aofFsyncPolicyName(g_aof_fsync_policy)});
+        }
+
+        if (key == "appendonly")
+        {
+            return encodeArray({key, g_aof_enabled ? "yes" : "no"});
         }
 
         return encodeError("ERR unknown configuration parameter");
@@ -533,6 +539,29 @@ string commandConfig(CommandContext& ctx, const vector<string>& argv)
             }
 
             g_aof_fsync_policy = policy;
+            return encodeOK();
+        }
+
+        if (key == "appendonly")
+        {
+            bool enable = false;
+            if (value == "yes" || value == "YES")
+            {
+                enable = true;
+            }
+            else if (value == "no" || value == "NO")
+            {
+                enable = false;
+            }
+            else
+            {
+                return encodeError("ERR invalid appendonly value");
+            }
+
+            if (!aofSetEnabled(enable))
+            {
+                return encodeError("ERR failed to toggle appendonly");
+            }
             return encodeOK();
         }
 

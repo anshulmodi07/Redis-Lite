@@ -18,6 +18,7 @@ extern bool g_aof_replaying;
 extern AofFsyncPolicy g_aof_fsync_policy;
 
 void aofInit();
+bool aofSetEnabled(bool enable);
 void aofAppendCommand(const std::vector<std::string>& argv);
 void aofFlush();
 void aofPeriodic(int elapsed_ms);

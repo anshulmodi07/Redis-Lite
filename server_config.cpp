@@ -1,4 +1,5 @@
 #include "eviction.h"
+#include "aof.h"
 
 #include <cstring>
 #include <iostream>
@@ -65,6 +66,23 @@ bool parseServerArgs(int argc, char** argv)
         if (arg == "--port" && i + 1 < argc)
         {
             g_server_config.port = stoi(argv[++i]);
+        }
+        else if (arg == "--appendonly" && i + 1 < argc)
+        {
+            const string val = argv[++i];
+            if (val == "yes" || val == "YES")
+            {
+                g_aof_enabled = true;
+            }
+            else if (val == "no" || val == "NO")
+            {
+                g_aof_enabled = false;
+            }
+            else
+            {
+                cerr << "Invalid --appendonly value\n";
+                return false;
+            }
         }
         else if (arg == "--replicaof" && i + 2 < argc)
         {

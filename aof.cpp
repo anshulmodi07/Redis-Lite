@@ -177,7 +177,30 @@ bool writeCompactAof(const string& path, const vector<RedisDb>& databases)
 
 void aofInit()
 {
-    reopenAofFd();
+    if (g_aof_enabled)
+    {
+        reopenAofFd();
+    }
+}
+
+bool aofSetEnabled(bool enable)
+{
+    if (enable == g_aof_enabled)
+    {
+        return true;
+    }
+
+    if (enable)
+    {
+        reopenAofFd();
+        return g_aof_enabled;
+    }
+    else
+    {
+        closeAofFd();
+        g_aof_enabled = false;
+        return true;
+    }
 }
 
 void aofAppendCommand(const vector<string>& argv)

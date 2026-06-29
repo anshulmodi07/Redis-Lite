@@ -20,8 +20,10 @@ def compile_server():
     compile_binary(SERVER_BIN)
 
 
-def start_server():
-    proc = subprocess.Popen([str(SERVER_BIN)], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def start_server(args=None):
+    if args is None:
+        args = ["--appendonly", "yes"]
+    proc = subprocess.Popen([str(SERVER_BIN)] + args, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     deadline = time.time() + 5
     while time.time() < deadline:
         try:

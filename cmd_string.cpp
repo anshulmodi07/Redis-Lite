@@ -23,16 +23,36 @@ string notAnInteger()
     return encodeError("ERR value is not an integer or out of range");
 }
 
+// void putString(Db& db, const string& key, const string& value)
+// {
+//     auto it = db.find(key);
+//     if (it != db.end())
+//     {
+//         destroyObject(it->second);
+//         db.erase(it);
+//     }
+
+//     db[key] = createStringObject(value);
+// }
+
 void putString(Db& db, const string& key, const string& value)
 {
     auto it = db.find(key);
-    if (it != db.end())
+
+    if (it == db.end())
     {
-        destroyObject(it->second);
-        db.erase(it);
+        db.emplace(key, createStringObject(value));
+        return;
     }
 
-    db[key] = createStringObject(value);
+    if (it->second->type == OBJ_STRING)
+    {
+        setStringValue(it->second, value);
+        return;
+    }
+
+    destroyObject(it->second);
+    it->second = createStringObject(value);
 }
 
 RedisObject* ensureStringKey(Db& db, const string& key)
