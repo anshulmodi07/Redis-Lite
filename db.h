@@ -10,122 +10,111 @@
 
 using Expires = std::unordered_map<std::string, long long>;
 
-struct RedisDb
-{
-    Db data;
-    Expires expires;
+struct RedisDb {
+  Db data;
+  Expires expires;
 };
 
-inline long long nowMs()
-{
-    using namespace std::chrono;
-    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+extern long long g_cached_time_ms;
+
+inline long long nowMs() {
+  using namespace std::chrono;
+  return duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+      .count();
 }
 
-inline bool keyExists(const RedisDb& db, const std::string& key)
-{
-    return db.data.find(key) != db.data.end();
+inline bool keyExists(const RedisDb &db, const std::string &key) {
+  return db.data.find(key) != db.data.end();
 }
 
-inline bool setExpireAtMs(RedisDb& db, const std::string& key, long long expire_ms)
-{
-    if (!keyExists(db, key))
-    {
-        return false;
-    }
+inline bool setExpireAtMs(RedisDb &db, const std::string &key,
+                          long long expire_ms) {
+  if (!keyExists(db, key)) {
+    return false;
+  }
 
-    db.expires[key] = expire_ms;
-    return true;
+  db.expires[key] = expire_ms;
+  return true;
 }
 
-inline bool removeExpire(RedisDb& db, const std::string& key)
-{
-    return db.expires.erase(key) > 0;
+inline bool removeExpire(RedisDb &db, const std::string &key) {
+  return db.expires.erase(key) > 0;
 }
 
-inline long long ttlMilliseconds(const RedisDb& db, const std::string& key)
-{
-    if (!keyExists(db, key))
-    {
-        return -2;
-    }
+inline long long ttlMilliseconds(const RedisDb &db, const std::string &key) {
+  if (!keyExists(db, key)) {
+    return -2;
+  }
 
-    auto it = db.expires.find(key);
-    if (it == db.expires.end())
-    {
-        return -1;
-    }
+  auto it = db.expires.find(key);
+  if (it == db.expires.end()) {
+    return -1;
+  }
 
-    long long remaining = it->second - nowMs();
-    return remaining > 0 ? remaining : 0;
+  long long now = (g_cached_time_ms > 0) ? g_cached_time_ms : nowMs();
+  long long remaining = it->second - now;
+  return remaining > 0 ? remaining : 0;
 }
 
-inline long long ttlSeconds(const RedisDb& db, const std::string& key)
-{
-    long long pttl = ttlMilliseconds(db, key);
-    if (pttl < 0)
-    {
-        return pttl;
-    }
+inline long long ttlSeconds(const RedisDb &db, const std::string &key) {
+  long long pttl = ttlMilliseconds(db, key);
+  if (pttl < 0) {
+    return pttl;
+  }
 
-    return pttl / 1000;
+  return pttl / 1000;
 }
 
-inline bool isExpired(const RedisDb& db, const std::string& key)
-{
-    auto it = db.expires.find(key);
-    return it != db.expires.end() && it->second <= nowMs();
+inline bool isExpired(const RedisDb &db, const std::string &key) {
+  auto it = db.expires.find(key);
+  long long now = (g_cached_time_ms > 0) ? g_cached_time_ms : nowMs();
+  return it != db.expires.end() && it->second <= now;
 }
 
-inline bool expireIfNeeded(RedisDb& db, const std::string& key)
-{
-    if (!isExpired(db, key))
-    {
-        return false;
-    }
+inline bool expireIfNeeded(RedisDb &db, const std::string &key) {
+  if (!isExpired(db, key)) {
+    return false;
+  }
 
-    auto item = db.data.find(key);
-    if (item != db.data.end())
-    {
-        destroyObject(item->second);
-        db.data.erase(item);
-    }
-    db.expires.erase(key);
-    return true;
+  auto item = db.data.find(key);
+  if (item != db.data.end()) {
+    destroyObject(item->second);
+    db.data.erase(item);
+  }
+  db.expires.erase(key);
+  return true;
 }
 
-inline size_t activeExpireCycle(RedisDb& db, size_t sample_size = 20)
-{
-    size_t total_expired = 0;
+inline size_t activeExpireCycle(RedisDb &db, size_t sample_size = 20) {
+  size_t total_expired = 0;
+  long long now = (g_cached_time_ms > 0) ? g_cached_time_ms : nowMs();
 
-    while (!db.expires.empty())
-    {
-        std::vector<std::string> sample;
-        sample.reserve(std::min(sample_size, db.expires.size()));
-        for (const auto& item : db.expires)
-        {
-            sample.push_back(item.first);
-            if (sample.size() == sample_size)
-            {
-                break;
-            }
+  while (!db.expires.empty()) {
+    size_t checked = 0;
+    size_t expired = 0;
+    auto it = db.expires.begin();
+
+    while (it != db.expires.end() && checked < sample_size) {
+      ++checked;
+      if (it->second <= now) {
+        auto item = db.data.find(it->first);
+        if (item != db.data.end()) {
+          destroyObject(item->second);
+          db.data.erase(item);
         }
-
-        size_t expired = 0;
-        for (const std::string& key : sample)
-        {
-            if (expireIfNeeded(db, key))
-            {
-                ++expired;
-            }
-        }
-
-        total_expired += expired;
-        if (sample.empty() || expired * 4 < sample.size())
-        {
-            break;
-        }
+        it = db.expires.erase(it);
+        ++expired;
+      } else {
+        ++it;
+      }
     }
 
-    return total_expired;
+    total_expired += expired;
+    if (checked == 0 || expired * 4 < checked) {
+      break;
+    }
+  }
+
+  return total_expired;
 }
+

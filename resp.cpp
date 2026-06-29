@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <stdexcept>
+#include <unordered_map>
 
 using namespace std;
 
@@ -100,7 +101,7 @@ bool parseBulkStringAt(
         return false;
     }
 
-    out = buffer.substr(next, bulk_len);
+    out.assign(buffer, next, bulk_len);
     next += bulk_len;
 
     if (buffer[next] != '\r' || buffer[next + 1] != '\n')
@@ -135,24 +136,21 @@ bool parseArrayAt(
         throw invalid_argument("protocol error: null array is not a command");
     }
 
-    vector<string> argv;
-    argv.reserve(static_cast<size_t>(count));
+    out.clear();
+    out.resize(static_cast<size_t>(count));
 
     for (long long i = 0; i < count; ++i)
     {
-        string arg;
         size_t after_bulk = next;
 
-        if (!parseBulkStringAt(buffer, next, arg, after_bulk))
+        if (!parseBulkStringAt(buffer, next, out[static_cast<size_t>(i)], after_bulk))
         {
             return false;
         }
 
-        argv.push_back(arg);
         next = after_bulk;
     }
 
-    out = argv;
     return true;
 }
 
@@ -168,7 +166,7 @@ bool parseInlineAt(
         return false;
     }
 
-    out = tokenize(line);
+    tokenize(line, out);
     return true;
 }
 }
@@ -185,17 +183,17 @@ bool RespParser::tryParse(vector<string>& out)
         return false;
     }
 
-    vector<string> parsed;
+    out.clear();
     size_t next = head_;
     bool complete = false;
 
     if (buffer_[head_] == '*')
     {
-        complete = parseArrayAt(buffer_, head_, parsed, next);
+        complete = parseArrayAt(buffer_, head_, out, next);
     }
     else
     {
-        complete = parseInlineAt(buffer_, head_, parsed, next);
+        complete = parseInlineAt(buffer_, head_, out, next);
     }
 
     if (!complete)
@@ -215,7 +213,6 @@ bool RespParser::tryParse(vector<string>& out)
         head_ = 0;
     }
 
-    out = parsed;
     return true;
 }
 
@@ -234,28 +231,65 @@ const string& encodeOK()
     return Resp::OK;
 }
 
-string encodeError(const string& msg)
+namespace
 {
-    return "-" + msg + "\r\n";
+const string& cachedErrorResponse(const string& msg)
+{
+    static unordered_map<string, string> cache;
+    auto it = cache.find(msg);
+    if (it != cache.end())
+    {
+        return it->second;
+    }
+
+    auto inserted = cache.emplace(msg, "-" + msg + "\r\n");
+    return inserted.first->second;
+}
+}
+
+const string& encodeError(const string& msg)
+{
+    return cachedErrorResponse(msg);
+}
+
+void encodeIntegerInto(long long value, string& out)
+{
+    if (value >= 0 && value < 10000)
+    {
+        out += Resp::INTS[value];
+        return;
+    }
+    out += ':';
+    out += to_string(value);
+    out += "\r\n";
 }
 
 string encodeInteger(long long value)
 {
     if (value >= 0 && value < 10000)
     {
-        static bool initialized = []() {
-            Resp::init();
-            return true;
-        }();
-        (void)initialized;
         return Resp::INTS[value];
     }
-    return ":" + to_string(value) + "\r\n";
+    string res;
+    encodeIntegerInto(value, res);
+    return res;
+}
+
+void encodeBulkStringInto(const string& value, string& out)
+{
+    out.reserve(out.size() + 1 + 20 + 2 + value.size() + 2);
+    out += '$';
+    out += to_string(value.size());
+    out += "\r\n";
+    out += value;
+    out += "\r\n";
 }
 
 string encodeBulkString(const string& value)
 {
-    return "$" + to_string(value.size()) + "\r\n" + value + "\r\n";
+    string response;
+    encodeBulkStringInto(value, response);
+    return response;
 }
 
 const string& encodeNullBulk()
@@ -263,15 +297,22 @@ const string& encodeNullBulk()
     return Resp::NULL_BULK;
 }
 
-string encodeArray(const vector<string>& items)
+void encodeArrayInto(const vector<string>& items, string& out)
 {
-    string response = "*" + to_string(items.size()) + "\r\n";
+    out += '*';
+    out += to_string(items.size());
+    out += "\r\n";
 
     for (const string& item : items)
     {
-        response += encodeBulkString(item);
+        encodeBulkStringInto(item, out);
     }
+}
 
+string encodeArray(const vector<string>& items)
+{
+    string response;
+    encodeArrayInto(items, response);
     return response;
 }
 

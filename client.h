@@ -99,8 +99,9 @@ struct Client
     std::vector<std::vector<std::string>> queued_commands;
     RespParser parser;
     WriteBuffer write_buf;
+    std::vector<std::string> parsed_argv_cache;
     bool closing = false;
 };
 
-inline void (*g_client_write_pending_cb)(int epoll_fd, Client& client) = nullptr;
+extern void (*g_client_write_pending_cb)(int epoll_fd, Client& client);
 

@@ -75,7 +75,37 @@ SERVER_SOURCES = CORE_SOURCES + LUA_SOURCES + [
 ]
 
 COMPILE_FLAGS = ["-I", str(LUA_ROOT)]
-EXTRA_LIBS = []
+def _jemalloc_link_flags():
+    if os.environ.get("REDIS_LITE_USE_JEMALLOC", "1") == "0":
+        return []
+
+    for pkg in ("jemalloc", "libjemalloc"):
+        try:
+            result = subprocess.run(
+                ["pkg-config", "--libs", pkg],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip().split()
+        except FileNotFoundError:
+            pass
+
+    for candidate in (
+        "/usr/lib/x86_64-linux-gnu/libjemalloc.so",
+        "/usr/lib64/libjemalloc.so",
+        "/usr/local/lib/libjemalloc.so",
+        "/opt/homebrew/lib/libjemalloc.dylib",
+    ):
+        if os.path.exists(candidate):
+            lib_dir = os.path.dirname(candidate)
+            return [f"-L{lib_dir}", "-ljemalloc"]
+
+    return []
+
+
+EXTRA_LIBS = _jemalloc_link_flags()
 
 
 def _lua_object_path(source: Path) -> Path:

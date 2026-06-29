@@ -17,11 +17,14 @@ private:
 
 std::string encodeSimpleString(const std::string& value);
 const std::string& encodeOK();
-std::string encodeError(const std::string& msg);
+const std::string& encodeError(const std::string& msg);
 std::string encodeInteger(long long value);
+void encodeIntegerInto(long long value, std::string& out);
 std::string encodeBulkString(const std::string& value);
+void encodeBulkStringInto(const std::string& value, std::string& out);
 const std::string& encodeNullBulk();
 std::string encodeArray(const std::vector<std::string>& items);
+void encodeArrayInto(const std::vector<std::string>& items, std::string& out);
 std::string encodeRespArray(const std::vector<std::string>& replies);
 const std::string& encodeNullArray();
 
