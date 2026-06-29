@@ -64,7 +64,24 @@ sds sdsnew(const char* init)
 
     return sdsnewlen(init, std::strlen(init));
 }
+void sdssetlen(sds s, size_t len)
+{
+    if (s == nullptr)
+        return;
 
+    SdsHeader* hdr = sdsHdr(s);
+
+    if (len > hdr->alloc)
+        return;
+
+    hdr->len = len;
+    s[len] = '\0';
+}
+
+void sdsclear(sds s)
+{
+    sdssetlen(s, 0);
+}
 void sdsfree(sds s)
 {
     if (s == nullptr)

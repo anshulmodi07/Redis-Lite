@@ -49,23 +49,66 @@ RedisObject* makeObject(ObjectType type, ObjectEncoding encoding, void* ptr)
 }
 }
 
-bool tryParseInteger(const string& value, long long& out)
+// bool tryParseInteger(const string& value, long long& out)
+// {
+//     if (value.empty())
+//     {
+//         return false;
+//     }
+
+//     try
+//     {
+//         size_t consumed = 0;
+//         out = stoll(value, &consumed);
+//         return consumed == value.size();
+//     }
+//     catch (const exception&)
+//     {
+//         return false;
+//     }
+// }
+
+#include <climits>
+
+bool tryParseInteger(const std::string& value, long long& out)
 {
     if (value.empty())
-    {
         return false;
+
+    size_t i = 0;
+    bool negative = false;
+
+    if (value[0] == '-' || value[0] == '+')
+    {
+        negative = (value[0] == '-');
+        i++;
     }
 
-    try
-    {
-        size_t consumed = 0;
-        out = stoll(value, &consumed);
-        return consumed == value.size();
-    }
-    catch (const exception&)
-    {
+    if (i == value.size())
         return false;
+
+    long long result = 0;
+
+    
+
+    for (; i < value.size(); ++i)
+    {
+        char c = value[i];
+
+        if (c < '0' || c > '9')
+            return false;
+
+        int digit = c - '0';
+
+        // Overflow check
+        if (result > (LLONG_MAX - digit) / 10)
+            return false;
+
+        result = result * 10 + digit;
     }
+
+    out = negative ? -result : result;
+    return true;
 }
 
 RedisObject* createStringObject(const string& value)
@@ -256,15 +299,13 @@ void setStringInteger(RedisObject* obj, long long value)
         throw invalid_argument("value is not a string object");
     }
 
-    if (obj->encoding == ENC_RAW)
+    if (obj->encoding == ENC_INT)
     {
-        sdsfree(static_cast<sds>(obj->ptr));
-    }
-    else if (obj->encoding == ENC_INT)
-    {
-        delete static_cast<long long*>(obj->ptr);
+        *static_cast<long long*>(obj->ptr) = value;
+        return;
     }
 
+    sdsfree(static_cast<sds>(obj->ptr));
     obj->encoding = ENC_INT;
     obj->ptr = new long long(value);
 }
@@ -272,29 +313,51 @@ void setStringInteger(RedisObject* obj, long long value)
 void setStringValue(RedisObject* obj, const string& value)
 {
     if (obj == nullptr || obj->type != OBJ_STRING)
-    {
         throw invalid_argument("value is not a string object");
-    }
-
-    if (obj->encoding == ENC_RAW)
-    {
-        sdsfree(static_cast<sds>(obj->ptr));
-    }
-    else if (obj->encoding == ENC_INT)
-    {
-        delete static_cast<long long*>(obj->ptr);
-    }
 
     long long integer = 0;
+
+    // ---------- New value is an integer ----------
     if (tryParseInteger(value, integer))
     {
+        // INT -> INT (reuse allocation)
+        if (obj->encoding == ENC_INT)
+        {
+            *static_cast<long long*>(obj->ptr) = integer;
+            return;
+        }
+
+        // RAW -> INT
+        sdsfree(static_cast<sds>(obj->ptr));
+
         obj->encoding = ENC_INT;
         obj->ptr = new long long(integer);
         return;
     }
 
+    // ---------- New value is a string ----------
+    if (obj->encoding == ENC_RAW)
+    {
+        sds s = static_cast<sds>(obj->ptr);
+
+        sdsclear(s);                      // O(1)
+        s = sdscatlen(s, value.data(), value.size());
+
+        if (s == nullptr)
+            throw bad_alloc();
+
+        obj->ptr = s;
+        return;
+    }
+
+    // ---------- INT -> RAW ----------
+    delete static_cast<long long*>(obj->ptr);
+
     obj->encoding = ENC_RAW;
     obj->ptr = sdsnewlen(value.data(), value.size());
+
+    if (obj->ptr == nullptr)
+        throw bad_alloc();
 }
 
 void appendStringValue(RedisObject* obj, const string& suffix)

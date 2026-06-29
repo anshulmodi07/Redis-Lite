@@ -71,7 +71,7 @@ bool setNonBlocking(int fd) {
 
 void backlogAppend(const string &bytes) {
   repl_backlog.append(bytes);
-  if (repl_backlog.size() > REPL_BACKLOG_SIZE) {
+  if (repl_backlog.size() > 2 * REPL_BACKLOG_SIZE) {
     const size_t trim = repl_backlog.size() - REPL_BACKLOG_SIZE;
     repl_backlog.erase(0, trim);
     repl_backlog_start += trim;

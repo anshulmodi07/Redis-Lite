@@ -12,3 +12,5 @@ size_t sdslen(const sds s);
 sds sdsgrow(sds s, size_t addlen);
 sds sdscat(sds s, const char* t);
 sds sdscatlen(sds s, const void* t, size_t len);
+void sdssetlen(sds s, size_t len);
+void sdsclear(sds s);
