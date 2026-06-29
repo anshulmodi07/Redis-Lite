@@ -79,22 +79,22 @@ run_suite() {
 
         echo "=== 1. Baseline latency (no pipeline, -n 100000) ==="
         echo "--- Real Redis (port ${REAL_PORT}) ---"
-        "${REDIS_BENCH}" -p "${REAL_PORT}" -t set,get -n 100000 -q
+        "${REDIS_BENCH}" -p "${REAL_PORT}" -t set,get -n 100000 -q || true
         echo "--- Redis Lite (port ${LITE_PORT}) ---"
-        "${REDIS_BENCH}" -p "${LITE_PORT}" -t set,get -n 100000 -q
+        "${REDIS_BENCH}" -p "${LITE_PORT}" -t set,get -n 100000 -q || true
         echo
 
         echo "=== 2. Pipeline scaling curve (Redis Lite, -n 100000) ==="
         for P in 1 4 16 64 256; do
             echo "--- Pipeline P=${P} ---"
-            "${REDIS_BENCH}" -p "${LITE_PORT}" -t set,get -n 100000 -P "${P}" -q
+            "${REDIS_BENCH}" -p "${LITE_PORT}" -t set,get -n 100000 -P "${P}" -q || true
         done
         echo
 
         echo "=== 2b. Pipeline scaling curve (Real Redis, -n 100000) ==="
         for P in 1 4 16 64 256; do
             echo "--- Pipeline P=${P} ---"
-            "${REDIS_BENCH}" -p "${REAL_PORT}" -t set,get -n 100000 -P "${P}" -q
+            "${REDIS_BENCH}" -p "${REAL_PORT}" -t set,get -n 100000 -P "${P}" -q || true
         done
         echo
 
@@ -102,14 +102,14 @@ run_suite() {
         echo "--- Redis Lite ---"
         for C in 1 10 50 100 256; do
             echo "--- Clients C=${C} ---"
-            "${REDIS_BENCH}" -p "${LITE_PORT}" -t set,get -n 100000 -c "${C}" -P 16 -q
+            "${REDIS_BENCH}" -p "${LITE_PORT}" -t set,get -n 100000 -c "${C}" -P 16 -q || true
         done
         echo
 
         echo "--- Real Redis ---"
         for C in 1 10 50 100 256; do
             echo "--- Clients C=${C} ---"
-            "${REDIS_BENCH}" -p "${REAL_PORT}" -t set,get -n 100000 -c "${C}" -P 16 -q
+            "${REDIS_BENCH}" -p "${REAL_PORT}" -t set,get -n 100000 -c "${C}" -P 16 -q || true
         done
     } | tee "${RESULTS}"
 }
