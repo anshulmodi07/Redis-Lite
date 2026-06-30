@@ -12,3 +12,4 @@
 /tests/server_v3_3_bin
 /tests/server_v3_4_bin
 /tests/server_v3_5_bin
+redis-lite-key.pem

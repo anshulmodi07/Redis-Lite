@@ -6,6 +6,21 @@
 A single-threaded, in-memory key-value store implementing the Redis wire protocol (RESP),
 built in C++17 with an epoll-based reactor event loop.
 
+## Quick start
+
+```bash
+docker run -p 8080:8080 devam246/redis-lite:v1.0.0
+redis-cli -p 8080 PING
+```
+
+## Live demo
+
+A live instance is running on AWS EC2 — try it right now:
+
+```bash
+redis-cli -h 16.192.114.182 -p 8080 PING
+```
+
 ## Features
 
 - **RESP2 protocol** — works with real `redis-cli` and Redis client libraries

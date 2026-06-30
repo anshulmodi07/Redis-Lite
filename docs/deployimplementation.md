@@ -251,3 +251,53 @@ Badge URLs use the actual repo path: `anshulmodi07/Redis-Lite`.
 
 **Phase 2 is complete.** CI workflows are set up. Once pushed to GitHub, the badges will
 show green/red build status on the README.
+
+---
+
+## Phase 3 — Cloud Deployment (AWS EC2)
+
+### 3.1 — Deploy to AWS EC2 free tier ✅
+
+**Status:** Complete
+
+Deployed Redis Lite on an AWS EC2 `t2.micro` instance (free tier).
+
+**Details:**
+- **Elastic IP:** `16.192.114.182`
+- **Port:** 8080
+- **Image:** `devam246/redis-lite:v1.0.0` (from Docker Hub)
+- **Container config:** `--restart unless-stopped` (survives reboots)
+- **Security group:** SSH (port 22, restricted), Custom TCP (port 8080, public)
+
+**Verified commands working:**
+- `PING` → `PONG`
+- `SET hello world` → `OK`
+- `GET hello` → `"world"`
+- `DEL hello` → `(integer) 1`
+
+**Files created:**
+- `scripts/redeploy.sh` — reusable script for future redeployments
+
+---
+
+### 3.4 — Document live demo in README ✅
+
+**Status:** Complete
+
+Added "Quick start" (Docker) and "Live demo" (EC2 IP) sections to `README.md`.
+
+**Files modified:**
+- `README.md`
+
+---
+
+## Phase 3 Summary
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 3.1 | Deploy to AWS EC2 free tier | ✅ Done |
+| 3.2 | Fly.io (alternative) | ⏭️ Skipped |
+| 3.3 | Browser-based demo | ⏭️ Skipped |
+| 3.4 | Document live demo in README | ✅ Done |
+
+**Phase 3 is complete.** Redis Lite is live at `16.192.114.182:8080`.
