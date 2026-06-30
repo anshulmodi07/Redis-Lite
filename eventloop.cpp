@@ -14,7 +14,6 @@
 #include "resp.h"
 #include "scripting.h"
 
-
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
@@ -33,14 +32,13 @@
 #include <utility>
 #include <vector>
 
-
 using namespace std;
 
 long long g_cached_time_ms = 0;
-void (*g_client_write_pending_cb)(int epoll_fd, Client& client) = nullptr;
+void (*g_client_write_pending_cb)(int epoll_fd, Client &client) = nullptr;
 
 namespace {
-constexpr size_t MAX_REQUEST_BUFFER_SIZE = 4096;
+constexpr size_t MAX_REQUEST_BUFFER_SIZE = 16 * 1024 * 1024;
 constexpr int MAX_EVENTS = 64;
 constexpr int EPOLL_WAIT_TIMEOUT_MS = 100;
 constexpr size_t DB_COUNT = 16;
@@ -63,10 +61,10 @@ int computeNextTimerMs() {
   if (earliest == INT64_MAX) {
     return 100;
   }
-  if (earliest <= 0) return 0;
+  if (earliest <= 0)
+    return 0;
   return static_cast<int>(std::min(earliest, 100LL));
 }
-
 
 void initDatabases() {
   for (auto &db : databases) {
@@ -345,9 +343,8 @@ int runEventLoop(int server_fd) {
       g_stats.last_sample_commands = g_stats.total_commands_processed;
     }
     int timeout_ms = computeNextTimerMs();
-    int ready =
-        epoll_wait(epoll_fd, events.data(), static_cast<int>(events.size()),
-                   timeout_ms);
+    int ready = epoll_wait(epoll_fd, events.data(),
+                           static_cast<int>(events.size()), timeout_ms);
     if (ready < 0) {
       if (errno == EINTR) {
         continue;

@@ -1,3 +1,6 @@
+> **Superseded.** This report covers the replication backlog O(N) trim fix specifically.
+> For the current, canonical benchmark numbers see [docs/analysis.md](../analysis.md).
+
 # Performance Optimization & Benchmarking Report
 
 This report documents the performance diagnosis, optimization, and final benchmark results for the **Redis-Lite** project.

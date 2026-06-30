@@ -1,36 +1,68 @@
 # Redis Lite
 
-Redis Lite is a lightweight, single-threaded, high-performance in-memory key-value database built in C++17 using the `epoll` reactor pattern. It supports the RESP2 wire protocol, transactions, pub/sub, expiry, and replication.
+A single-threaded, in-memory key-value store implementing the Redis wire protocol (RESP),
+built in C++17 with an epoll-based reactor event loop.
 
-## Key Features
-- **epoll Reactor Loop**: Single-threaded event loop for handling thousands of concurrent connections.
-- **RESP2 Protocol**: Native compatibility with standard clients (e.g., `redis-cli`).
-- **Core Data Types**: Strings, Hashes, Lists, Sets, and Sorted Sets.
-- **Compact Encodings**: Simple Dynamic Strings (SDS), listpacks, and intsets for optimized memory usage.
-- **Durability**: RDB snapshotting (via fork-based copy-on-write) and Append-Only File (AOF) with customizable fsync policies.
-- **Transactions & Pub/Sub**: Atomic command queuing via MULTI/EXEC/DISCARD and channel messaging.
-- **Primary-Replica Replication**: Handshake, full sync (RDB), and command stream mirroring.
+## Features
 
-## Benchmarks
+- **RESP2 protocol** — works with real `redis-cli` and Redis client libraries
+- **Core data types:** String, Hash, List, Set, Sorted Set
+- **Compact encodings:** SDS, listpacks, intsets for optimized memory usage
+- **TTL/expiry:** active sweep (100ms cycle) + passive (lazy) expiry
+- **Persistence:** RDB snapshotting (fork + COW) and AOF logging (configurable fsync)
+- **Pub/Sub** and **MULTI/EXEC transactions**
+- **Lua scripting** (EVAL/EVALSHA/SCRIPT) via bundled Lua 5.1
+- **Primary-replica replication:** handshake, full sync (RDB), command stream mirroring
+- **Basic clustering:** CRC16 hash slots, MOVED redirection, CLUSTER commands
 
-The following table compares the performance of Redis Lite on a standard Linux/WSL environment under sequential (no pipeline) and pipelined workloads:
+## Performance (honest numbers, as of 2026-06-25)
 
-| Scenario | Redis Lite | Real Redis | Gap / Explanation |
-|---|---|---|---|
-| **GET / SET (no pipeline)** | ~794 ops/sec | 100k - 120k ops/sec | Bound by TCP round-trip and syscall overhead. |
-| **GET / SET (pipeline=16)** | ~11.3k ops/sec | 800k+ ops/sec | Pipelining reduces syscall overhead by ~14x; remains limited by user-space string allocation copies and no custom memory allocator (like jemalloc). |
-| **ZADD Leaderboard** | ~800 ops/sec | 80k - 100k ops/sec | Custom skip list management overhead compared to highly optimized Redis C structures. |
+Benchmarked with `redis-benchmark -n 100000` on WSL2 (Linux 6.18), same machine for both servers.
 
-*Note: Real Redis leverages highly optimized C memory layouts, jemalloc allocator, TCP buffer tuning, and inline pipeline optimizations.*
+### Baseline — no pipelining
 
-## Compilation & Run
+| Command | Redis Lite | Real Redis | Gap |
+|---------|-----------|------------|-----|
+| **SET** | ~4.5k req/s | ~76k req/s | ~17× |
+| **GET** | ~25k req/s | ~78k req/s | ~3× |
 
-To compile and launch the server in a Linux/WSL environment:
+### Pipeline scaling (P=16)
+
+| Command | Redis Lite | Real Redis | Gap |
+|---------|-----------|------------|-----|
+| **SET** | ~10.4k req/s | ~625k req/s | ~60× |
+| **GET** | ~6.5k req/s | ~1.06M req/s | ~163× |
+
+**Known limitation:** GET throughput degrades under high concurrency (C≥50) with deep pipelining —
+see [docs/analysis.md](docs/analysis.md) for full root-cause analysis and next steps in
+[docs/improve.md](docs/improve.md).
+
+> The gap vs Real Redis is expected: Redis uses jemalloc, highly tuned C structures, kernel buffer
+> tuning, and years of micro-optimizations. Redis Lite is a learning implementation in C++17.
+
+## Architecture
+
+See [docs/design_doc.md](docs/design_doc.md) for the full architecture diagram and design
+rationale (why single-threaded, why skip lists for ZSET, fork+COW for snapshotting, etc.)
+
+## Build from source
+
+Requires a Linux/WSL environment with `g++` (C++17) and Python 3.
 
 ```bash
-# Compile and run the test suite
+# Compile the server (builds bundled Lua and links everything)
+python3 tests/build_sources.py
+
+# Run the test suite
 python3 tests/test_v12.py
 
 # Run the benchmark
 python3 tests/benchmark.py
 ```
+
+## Project history
+
+This was built incrementally from a thread-per-client toy TCP server (V0) to a full-featured
+single-threaded epoll-reactor server implementing the RESP protocol (V12). See
+[docs/structure.md](docs/structure.md) and [docs/guide.md](docs/guide.md) for the full
+version-by-version build log.
