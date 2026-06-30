@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ gcc python3 make
+
+      - name: Build server binary
+        run: |
+          python3 -c "
+          import sys; sys.path.insert(0, 'tests');
+          from build_sources import compile_binary;
+          compile_binary('redis-lite')
+          "
+
+      - name: Run test suite (V12)
+        run: python3 tests/test_v12.py
+
+      - name: Benchmark smoke test
+        run: python3 tests/benchmark.py

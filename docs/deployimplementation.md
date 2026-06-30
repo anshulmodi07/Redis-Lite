@@ -80,7 +80,7 @@ Replaced the old README with a comprehensive, canonical version following the te
 
 ---
 
-## Summary
+## Phase 0 Summary
 
 | Step | Description | Status |
 |------|-------------|--------|
@@ -90,4 +90,164 @@ Replaced the old README with a comprehensive, canonical version following the te
 | 0.4 | Write canonical top-level `README.md` | ✅ Done |
 
 **Phase 0 is complete.** The repo is now clean, conflict-free, with honest benchmark numbers
-and a professional README. Ready to proceed to Phase 1 (Containerize).
+and a professional README.
+
+---
+
+## Phase 1 — Containerize
+
+### 1.1 — Write the Dockerfile ✅
+
+**Status:** Complete
+
+Created a multi-stage Dockerfile adapted for this project's actual build system
+(`tests/build_sources.py` with raw `g++`, not CMake).
+
+**Key decisions:**
+- **Build stage:** Ubuntu 24.04 with `g++`, `gcc`, `python3` (needed to run `build_sources.py`).
+  No CMake since the project doesn't use it.
+- **Build command:** Invokes `build_sources.compile_binary('redis-lite')` directly via Python
+  one-liner, producing the binary at `/src/redis-lite`.
+- **Runtime stage:** Ubuntu 24.04 with only `libstdc++6`. Non-root user `redislite` (uid 1000).
+- **Entrypoint:** `["redis-lite"]` with default `CMD ["--port", "8080"]`.
+
+**Files created:**
+- `Dockerfile`
+
+---
+
+### 1.2 — Add .dockerignore ✅
+
+**Status:** Complete
+
+Excludes `.git`, `.github`, `.agents`, cached build artifacts (`tests/.build/`, `tests/__pycache__/`,
+test binaries), `docs/`, `*.md`, the 18MB `appendonly.aof`, and test files.
+
+**Files created:**
+- `.dockerignore`
+
+---
+
+### 1.3 — Build and smoke-test locally ✅
+
+**Status:** Complete
+
+Built image successfully. Fixed UID 1000 conflict in Ubuntu 24.04 (changed to UID 1001).
+Smoke-tested via `docker run` on port 8080.
+
+**Note:** `redis-cli` is not available natively on Windows. Used Docker-based redis-cli:
+```bash
+docker run --rm -it redis:7.2.7 redis-cli -h host.docker.internal -p 8080 PING
+```
+
+---
+
+### 1.4 — docker-compose.yml for benchmarking ✅
+
+**Status:** Complete
+
+Created `docker-compose.yml` with three services:
+- `redis-lite` — builds from the Dockerfile, exposes port 8080
+- `real-redis` — official Redis 7.2.7 image, in-memory only (`--save "" --appendonly no`)
+- `benchmark` — Redis image with `sleep infinity`, used to exec `redis-benchmark` commands
+
+**Usage:**
+```bash
+docker compose up -d
+docker compose exec benchmark redis-benchmark -h redis-lite -p 8080 -t set,get -n 100000 -q
+docker compose exec benchmark redis-benchmark -h real-redis -p 6379 -t set,get -n 100000 -q
+```
+
+**Files created:**
+- `docker-compose.yml`
+
+---
+
+### 1.5 — Push the image ✅
+
+**Status:** Complete
+
+Pushed to Docker Hub as `devam246/redis-lite:v1.0.0`.
+
+```
+digest: sha256:876df2318185b0a77dec93e54143e2a5b7b48c4791802c38e2faec350c86a714
+```
+
+---
+
+## Phase 1 Summary
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 1.1 | Write Dockerfile | ✅ Done |
+| 1.2 | Add `.dockerignore` | ✅ Done |
+| 1.3 | Build and smoke-test locally | ✅ Done |
+| 1.4 | Add `docker-compose.yml` | ✅ Done |
+| 1.5 | Push image (`devam246/redis-lite:v1.0.0`) | ✅ Done |
+
+**Phase 1 is complete.** Image is live on Docker Hub. Ready for Phase 2 (CI).
+
+---
+
+## Phase 2 — Continuous Integration (GitHub Actions)
+
+### 2.1 — Build + test workflow ✅
+
+**Status:** Complete
+
+Created `.github/workflows/ci.yml` with a single `build-and-test` job that:
+1. Installs `g++`, `gcc`, `python3`, `make` (the actual build dependencies)
+2. Builds the server binary via `build_sources.compile_binary('redis-lite')` — matching
+   the project's real build system (raw `g++`, not CMake)
+3. Runs the latest test suite (`test_v12.py`)
+4. Runs the benchmark smoke test (`benchmark.py`)
+
+**Triggers:** pushes to `main`, pull requests targeting `main`.
+
+**Files created:**
+- `.github/workflows/ci.yml`
+
+---
+
+### 2.2 — Docker build/publish workflow ✅
+
+**Status:** Complete
+
+Created `.github/workflows/docker.yml` that:
+1. Builds the Docker image on every push to `main` (verification only)
+2. On version tags (`v*`), also pushes to GitHub Container Registry (GHCR) at
+   `ghcr.io/anshulmodi07/redis-lite:<tag>`
+3. Uses `docker/setup-buildx-action@v3` for modern Buildx support
+4. Uses `docker/login-action@v3` with `GITHUB_TOKEN` for GHCR auth (no manual secrets needed)
+5. Includes `permissions: packages: write` for GHCR push access
+
+**Files created:**
+- `.github/workflows/docker.yml`
+
+---
+
+### 2.3 — Add CI badges to README ✅
+
+**Status:** Complete
+
+Added two badges at the very top of `README.md`, above the title:
+- **CI badge** — links to the CI workflow runs
+- **Docker badge** — links to the Docker build workflow runs
+
+Badge URLs use the actual repo path: `anshulmodi07/Redis-Lite`.
+
+**Files modified:**
+- `README.md`
+
+---
+
+## Phase 2 Summary
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 2.1 | CI build/test workflow | ✅ Done |
+| 2.2 | Docker build/publish workflow | ✅ Done |
+| 2.3 | Add CI badges to README | ✅ Done |
+
+**Phase 2 is complete.** CI workflows are set up. Once pushed to GitHub, the badges will
+show green/red build status on the README.

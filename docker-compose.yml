@@ -1,0 +1,26 @@
+# docker-compose.yml — side-by-side benchmarking
+#
+# Usage:
+#   docker compose up -d
+#   docker compose exec benchmark redis-benchmark -h redis-lite -p 8080 -t set,get -n 100000 -q
+#   docker compose exec benchmark redis-benchmark -h real-redis -p 6379 -t set,get -n 100000 -q
+
+services:
+  redis-lite:
+    build: .
+    ports:
+      - "8080:8080"
+    command: ["--port", "8080"]
+
+  real-redis:
+    image: redis:7.2.7
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  benchmark:
+    image: redis:7.2.7
+    depends_on:
+      - redis-lite
+      - real-redis
+    entrypoint: ["sleep", "infinity"]   # exec into this container to run redis-benchmark

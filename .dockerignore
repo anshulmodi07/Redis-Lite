@@ -1,0 +1,13 @@
+.git
+.github
+.agents
+tests/.build/
+tests/__pycache__/
+tests/*.exe
+tests/*_bin
+tests/*_dbg
+docs/
+*.md
+appendonly.aof
+test
+test.cpp

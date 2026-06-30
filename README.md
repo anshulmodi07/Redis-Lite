@@ -1,3 +1,6 @@
+[![CI](https://github.com/anshulmodi07/Redis-Lite/actions/workflows/ci.yml/badge.svg)](https://github.com/anshulmodi07/Redis-Lite/actions/workflows/ci.yml)
+[![Docker](https://github.com/anshulmodi07/Redis-Lite/actions/workflows/docker.yml/badge.svg)](https://github.com/anshulmodi07/Redis-Lite/actions/workflows/docker.yml)
+
 # Redis Lite
 
 A single-threaded, in-memory key-value store implementing the Redis wire protocol (RESP),
