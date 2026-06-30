@@ -301,3 +301,54 @@ Added "Quick start" (Docker) and "Live demo" (EC2 IP) sections to `README.md`.
 | 3.4 | Document live demo in README | ✅ Done |
 
 **Phase 3 is complete.** Redis Lite is live at `16.192.114.182:8080`.
+
+---
+
+## Phase 4 — Versioning & Release
+
+### 4.1 — Tag the release ✅
+
+**Status:** Complete
+
+Tagged `v1.0.0` with annotated tag and pushed to GitHub. The tag push triggers
+the Docker workflow (Phase 2.2) to auto-publish to GHCR.
+
+```bash
+git tag -a v1.0.0 -m "Redis Lite v1.0.0 — RESP protocol, persistence, scripting, clustering"
+git push origin v1.0.0
+```
+
+---
+
+### 4.2 — Write GitHub release notes ✅
+
+**Status:** Complete
+
+Published GitHub release at `https://github.com/anshulmodi07/Redis-Lite/releases/tag/v1.0.0`
+with full feature list, honest known limitations, and try-it commands for both Docker and
+the live EC2 instance.
+
+---
+
+## Phase 4 Summary
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 4.1 | Tag v1.0.0 release | ✅ Done |
+| 4.2 | Write GitHub release notes | ✅ Done |
+
+**Phase 4 is complete.**
+
+---
+
+## 🎉 All Phases Complete
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 0 | Repo Hygiene | ✅ Done |
+| 1 | Containerize | ✅ Done |
+| 2 | CI (GitHub Actions) | ✅ Done |
+| 3 | Cloud Deployment (AWS EC2) | ✅ Done |
+| 4 | Versioning & Release | ✅ Done |
+
+**Redis Lite is fully deployed, CI-tested, containerized, live on AWS, and released as v1.0.0.**
