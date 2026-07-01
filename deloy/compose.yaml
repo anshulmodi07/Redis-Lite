@@ -1,6 +1,6 @@
 services:
   redis-lite:
-    image: devam246/redis-lite:v1.0.0
+    image: devam246/redis-lite:latest
 
     container_name: redis-lite
 
@@ -14,3 +14,4 @@ services:
 
     environment:
       AOF_PATH: /data/appendonly.aof
+      APPENDONLY: "yes"

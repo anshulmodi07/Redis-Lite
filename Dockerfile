@@ -22,11 +22,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -u 1001 redislite
+RUN useradd -m -u 1001 redislite && \
+    mkdir -p /app /data && \
+    chown redislite:redislite /app /data
 
+WORKDIR /app
 COPY --from=build /src/redis-lite /usr/local/bin/redis-lite
 
+VOLUME ["/data"]
 USER redislite
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD bash -c 'echo > /dev/tcp/localhost/8080' || exit 1
 ENTRYPOINT ["redis-lite"]
 CMD ["--port", "8080"]

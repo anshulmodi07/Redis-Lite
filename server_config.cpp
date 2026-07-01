@@ -84,6 +84,10 @@ bool parseServerArgs(int argc, char** argv)
                 return false;
             }
         }
+        else if (arg == "--aof-path" && i + 1 < argc)
+        {
+            g_aof_filename = argv[++i];
+        }
         else if (arg == "--replicaof" && i + 2 < argc)
         {
             g_server_config.replicaof_host = argv[++i];

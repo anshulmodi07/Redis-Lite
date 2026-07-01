@@ -35,6 +35,7 @@
 using namespace std;
 
 long long g_cached_time_ms = 0;
+volatile sig_atomic_t g_shutdown_requested = 0;
 void (*g_client_write_pending_cb)(int epoll_fd, Client &client) = nullptr;
 
 namespace {
@@ -329,7 +330,7 @@ int runEventLoop(int server_fd) {
   long long last_cron_ms = 0;
   constexpr int CRON_INTERVAL_MS = 100;
 
-  while (true) {
+  while (!g_shutdown_requested) {
     g_cached_time_ms = nowMs();
     long long current_time = g_cached_time_ms;
     if (current_time - g_stats.last_sample_time_ms >= 1000) {
@@ -476,4 +477,10 @@ int runEventLoop(int server_fd) {
       cout << "Client disconnected\n";
     }
   }
+
+  // Graceful shutdown
+  cout << "Shutting down gracefully...\n";
+  aofFlush();
+  close(epoll_fd);
+  return 0;
 }
