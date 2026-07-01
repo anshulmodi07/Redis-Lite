@@ -1,20 +1,24 @@
 #!/bin/bash
-# redeploy.sh — Pull latest image and restart Redis Lite on EC2 via Docker Compose
-# Usage: cd ~/deploy && bash redeploy.sh
 
 set -e
 
-COMPOSE_FILE="$(dirname "$0")/compose.yaml"
+IMAGE="devam246/redis-lite:latest"
+CONTAINER="redis-lite"
+PORT=8080
 
 echo "==> Pulling latest image..."
-docker compose -f "$COMPOSE_FILE" pull
+docker pull "$IMAGE"
 
-echo "==> Restarting service..."
-docker compose -f "$COMPOSE_FILE" up -d
+echo "==> Stopping old container..."
+docker rm -f "$CONTAINER" 2>/dev/null || true
 
-echo "==> Pruning old images..."
-docker image prune -f
+echo "==> Starting new container..."
+docker run -d \
+  --name "$CONTAINER" \
+  --restart unless-stopped \
+  -p "$PORT:$PORT" \
+  "$IMAGE"
 
 echo "==> Done! Verifying..."
 sleep 2
-docker compose -f "$COMPOSE_FILE" ps
+docker ps --filter "name=$CONTAINER"
