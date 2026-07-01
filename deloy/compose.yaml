@@ -1,0 +1,16 @@
+services:
+  redis-lite:
+    image: devam246/redis-lite:v1.0.0
+
+    container_name: redis-lite
+
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - ./data:/data
+
+    environment:
+      AOF_PATH: /data/appendonly.aof
